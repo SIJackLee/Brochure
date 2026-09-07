@@ -2,8 +2,8 @@
 
 import { Environment, OrbitControls, useGLTF } from '@react-three/drei';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { useMemo, useRef } from 'react';
-import { ExtrudeGeometry, Group, Mesh, MeshStandardMaterial, Shape } from 'three';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Box3, DoubleSide, ExtrudeGeometry, Group, Mesh, MeshStandardMaterial, Shape, SRGBColorSpace, Vector3 } from 'three';
 
 const darkGreen = '#0d554f';
 const metal = '#747b78';
@@ -161,6 +161,20 @@ function ImportedController() {
       if (!(object instanceof Mesh)) return;
 
       const name = object.name.toLowerCase();
+      if (name === 'front_decal') {
+        const originalMaterials = Array.isArray(object.material) ? object.material : [object.material];
+        originalMaterials.forEach((material) => {
+          const originalMaterial = material as MeshStandardMaterial;
+          originalMaterial.side = DoubleSide;
+          if (originalMaterial.map) originalMaterial.map.colorSpace = SRGBColorSpace;
+          originalMaterial.polygonOffset = true;
+          originalMaterial.polygonOffsetFactor = -2;
+          originalMaterial.polygonOffsetUnits = -2;
+          originalMaterial.needsUpdate = true;
+        });
+        return;
+      }
+
       let material = new MeshStandardMaterial({
         color: '#1f514a',
         metalness: 0.22,
@@ -195,6 +209,17 @@ function ImportedController() {
 
       object.material = material;
     });
+
+    const root = clone.getObjectByName('SL802B_ROOT') ?? clone;
+    const frontDecal = root.getObjectByName('Front_Decal') as Mesh | undefined;
+    const frontDecalMaterial = (frontDecal
+      ? Array.isArray(frontDecal.material) ? frontDecal.material[0] : frontDecal.material
+      : undefined) as MeshStandardMaterial | undefined;
+    console.info('[SL802B] Front_Decal original material/map', {
+      material: frontDecalMaterial,
+      map: frontDecalMaterial?.map ?? null,
+    });
+
     return clone;
   }, [scene]);
 
@@ -288,10 +313,37 @@ function SafetyGrille() {
 }
 
 function PartsStudy() {
+  const motorBodyRef = useRef<Group>(null);
+  const controllerRef = useRef<Group>(null);
+  const [controllerScale, setControllerScale] = useState(1);
+
+  useLayoutEffect(() => {
+    if (!motorBodyRef.current || !controllerRef.current) return;
+
+    motorBodyRef.current.updateWorldMatrix(true, true);
+    controllerRef.current.updateWorldMatrix(true, true);
+
+    const motorBodySize = new Box3().setFromObject(motorBodyRef.current).getSize(new Vector3());
+    const controllerSize = new Box3().setFromObject(controllerRef.current).getSize(new Vector3());
+    const motorMaxDimension = Math.max(motorBodySize.x, motorBodySize.y, motorBodySize.z);
+    const controllerMaxDimension = Math.max(controllerSize.x, controllerSize.y, controllerSize.z);
+
+    if (motorMaxDimension <= 0 || controllerMaxDimension <= 0) return;
+
+    const nextScale = (motorMaxDimension * 0.95) / controllerMaxDimension;
+    setControllerScale(nextScale);
+    console.info('[SL802B] automatic scale from motor body bounds', {
+      motorBodySize,
+      controllerSize,
+      targetRatio: 0.95,
+      controllerScale: nextScale,
+    });
+  }, []);
+
   return <group position={[0.55, 0.05, 0]} rotation={[0.06, -0.3, 0]} scale={0.72}>
-    <group position={[0.25, 0.15, 0]} rotation={[0, 0, Math.PI / 2]} scale={0.008}><ImportedMotor /></group>
+    <group ref={motorBodyRef} position={[0.25, 0.15, 0]} rotation={[0, 0, Math.PI / 2]} scale={0.008}><ImportedMotor /></group>
     <group position={[-0.76, 0.15, 0]} scale={0.42}><BladeRotor settings={initialBladeSettings} /></group>
-    <group position={[0.28, -0.95, 0.18]} rotation={[0.02, -0.12, 0]} scale={3.1}><ImportedController /></group>
+    <group ref={controllerRef} position={[0.45, -1.72, 0.12]} rotation={[0.02, -0.12, 0]} scale={controllerScale}><ImportedController /></group>
   </group>;
 }
 
