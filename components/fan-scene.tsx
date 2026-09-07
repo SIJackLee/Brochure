@@ -2,7 +2,7 @@
 
 import { Environment, useGLTF } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { Box3, DoubleSide, ExtrudeGeometry, Group, Mesh, MeshStandardMaterial, Shape, SRGBColorSpace, Vector3 } from 'three';
 
 const darkGreen = '#0d554f';
@@ -71,13 +71,42 @@ function Motor() {
   </group>;
 }
 
-function ImportedMotor({ active }: { active: boolean }) {
+type MotorSceneState = 'exploded' | 'assembling' | 'assembled' | 'spinning' | 'showcase';
+
+type MotorAssemblyRef = {
+  elapsed: number;
+  state: MotorSceneState;
+  hasPlayed: boolean;
+};
+
+type MotorPartEntry = {
+  object: Mesh;
+  assembledPosition: Vector3;
+  assembledRotation: Vector3;
+  explodedOffset: number;
+  start: number;
+  end: number;
+};
+
+function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; assemblyRef: MutableRefObject<MotorAssemblyRef>; onReady: () => void }) {
   const { scene } = useGLTF('/models/BLDC_Motor_Web_v1.glb');
   const model = useMemo(() => {
     const clone = scene.clone(true);
     const rotatingParts = new Group();
     rotatingParts.name = 'MotorRotatingParts';
     const rotatingMeshes: Mesh[] = [];
+    const animationParts: MotorPartEntry[] = [];
+    const assemblyOrder = [
+      ['housing_lower', -88, 0.15, 0.75],
+      ['pcb_cover_assy', -118, 0.35, 0.95],
+      ['extrusion_housing', -52, 0.55, 1.15],
+      ['st_assy', 52, 0.75, 1.35],
+      ['housing_upper', 84, 0.82, 1.42],
+      ['front_cover', 112, 1.0, 1.6],
+      ['bearing', 138, 1.22, 1.82],
+      ['shaft', 156, 1.35, 2.05],
+    ] as const;
+    const assemblyParts = new Map(assemblyOrder.map(([name, offset, start, end]) => [name, { offset, start, end }]));
 
     clone.traverse((object) => {
       if (!(object instanceof Mesh)) return;
@@ -138,17 +167,50 @@ function ImportedMotor({ active }: { active: boolean }) {
       if (['bearing', 'front_cover', 'shaft'].includes(name)) {
         rotatingMeshes.push(object);
       }
+
+      const part = assemblyParts.get(name);
+      if (part) {
+        animationParts.push({
+          object,
+          assembledPosition: object.position.clone(),
+          assembledRotation: new Vector3(object.rotation.x, object.rotation.y, object.rotation.z),
+          explodedOffset: part.offset,
+          start: part.start,
+          end: part.end,
+        });
+      }
     });
 
     rotatingMeshes.forEach((object) => rotatingParts.add(object));
     clone.add(rotatingParts);
-    return { clone, rotatingParts };
+    return { clone, rotatingParts, animationParts };
   }, [scene]);
 
+  useEffect(() => {
+    onReady();
+  }, [onReady]);
+
   useFrame((_, delta) => {
+    const { elapsed, state } = assemblyRef.current;
+    model.animationParts.forEach((part) => {
+      const progress = state === 'showcase' || state === 'spinning' || state === 'assembled'
+        ? 1
+        : Math.max(0, Math.min(1, (elapsed - part.start) / (part.end - part.start)));
+      const eased = progress * progress * (3 - 2 * progress);
+      part.object.position.copy(part.assembledPosition);
+      part.object.position.y += part.explodedOffset * (1 - eased);
+      part.object.rotation.set(part.assembledRotation.x, part.assembledRotation.y, part.assembledRotation.z);
+    });
+
+    if (!active) return;
+
+    const spinProgress = state === 'spinning'
+      ? Math.max(0, Math.min(1, (elapsed - 2.8) / 1.0))
+      : state === 'showcase' ? 1 : 0;
+    const speed = 0.7 * (spinProgress * spinProgress * (3 - 2 * spinProgress));
     // The imported motor is rotated 90 degrees by its parent group, so invert
     // the local Y direction to match the fan rotor's world-space rotation.
-    if (active) model.rotatingParts.rotation.y -= delta * 0.7;
+    model.rotatingParts.rotation.y -= delta * speed;
   });
 
   return <primitive object={model.clone} />;
@@ -208,7 +270,7 @@ function ImportedController() {
   return <primitive object={model} />;
 }
 
-function BladeRotor({ settings, active }: { settings: BladeSettings; active: boolean }) {
+function BladeRotor({ settings, active, assemblyRef }: { settings: BladeSettings; active: boolean; assemblyRef: MutableRefObject<MotorAssemblyRef> }) {
   const rotorRef = useRef<Group>(null);
   const bladeGeometry = useMemo(() => {
     const {
@@ -255,7 +317,17 @@ function BladeRotor({ settings, active }: { settings: BladeSettings; active: boo
 
   useFrame((_, delta) => {
     if (!rotorRef.current) return;
-    if (active) rotorRef.current.rotation.x += delta * 0.7;
+    const { elapsed, state } = assemblyRef.current;
+    const assemblyProgress = state === 'showcase' || state === 'spinning' ? 1 : Math.max(0, Math.min(1, (elapsed - 1.8) / 0.75));
+    const easedAssembly = assemblyProgress * assemblyProgress * (3 - 2 * assemblyProgress);
+    rotorRef.current.position.x = -0.72 * (1 - easedAssembly);
+
+    if (!active) return;
+    const spinProgress = state === 'spinning'
+      ? Math.max(0, Math.min(1, (elapsed - 2.8) / 1.0))
+      : state === 'showcase' ? 1 : 0;
+    const speed = 0.7 * (spinProgress * spinProgress * (3 - 2 * spinProgress));
+    rotorRef.current.rotation.x += delta * speed;
   });
 
   const pitch = settings.pitchDegrees * (Math.PI / 180);
@@ -298,8 +370,47 @@ function PartsStudy({ activeSection }: { activeSection: SectionId }) {
   const studyRef = useRef<Group>(null);
   const motorBodyRef = useRef<Group>(null);
   const controllerRef = useRef<Group>(null);
+  const motorAssemblyRef = useRef<MotorAssemblyRef>({ elapsed: 0, state: 'exploded', hasPlayed: false });
+  const introClockRef = useRef(0);
+  const motorReadyRef = useRef(false);
+  const hasMotorIntroPlayedRef = useRef(false);
   const [controllerScale, setControllerScale] = useState(1);
   const [controllerPosition, setControllerPosition] = useState<[number, number, number]>([0.45, -1.72, 0.12]);
+
+  useEffect(() => {
+    if (activeSection === 'motor') {
+      if (hasMotorIntroPlayedRef.current) {
+        motorAssemblyRef.current = { elapsed: 4, state: 'showcase', hasPlayed: true };
+      } else {
+        introClockRef.current = 0;
+        motorAssemblyRef.current = { elapsed: 0, state: 'exploded', hasPlayed: false };
+      }
+      return;
+    }
+
+    if (!hasMotorIntroPlayedRef.current) hasMotorIntroPlayedRef.current = true;
+    motorAssemblyRef.current = { elapsed: 4, state: 'showcase', hasPlayed: true };
+  }, [activeSection]);
+
+  useFrame((_, delta) => {
+    if (activeSection !== 'motor' || hasMotorIntroPlayedRef.current || !motorReadyRef.current) return;
+
+    introClockRef.current += delta;
+    const elapsed = Math.min(introClockRef.current, 4);
+    const state: MotorSceneState = elapsed < 0.15
+      ? 'exploded'
+      : elapsed < 2.55
+        ? 'assembling'
+        : elapsed < 2.8
+          ? 'assembled'
+          : elapsed < 3.8 ? 'spinning' : 'showcase';
+    motorAssemblyRef.current = { elapsed, state, hasPlayed: false };
+
+    if (elapsed >= 4) {
+      hasMotorIntroPlayedRef.current = true;
+      motorAssemblyRef.current = { elapsed: 4, state: 'showcase', hasPlayed: true };
+    }
+  });
 
   useLayoutEffect(() => {
     if (!studyRef.current || !motorBodyRef.current || !controllerRef.current) return;
@@ -344,8 +455,8 @@ function PartsStudy({ activeSection }: { activeSection: SectionId }) {
 
   return <group ref={studyRef} name="ProductStages" position={[0.55, 0.05, 0]} rotation={[0.06, -0.3, 0]} scale={0.72}>
     <group name="MotorStage" position={[0.25, 0.15, 0]}>
-      <group ref={motorBodyRef} rotation={[0, 0, Math.PI / 2]} scale={0.008}><ImportedMotor active={activeSection === 'motor'} /></group>
-      <group position={[-0.76, 0, 0]} scale={0.42}><BladeRotor active={activeSection === 'motor'} settings={initialBladeSettings} /></group>
+      <group ref={motorBodyRef} rotation={[0, 0, Math.PI / 2]} scale={0.008}><ImportedMotor active={activeSection === 'motor'} assemblyRef={motorAssemblyRef} onReady={() => { motorReadyRef.current = true; }} /></group>
+      <group position={[-0.76, 0, 0]} scale={0.42}><BladeRotor active={activeSection === 'motor'} assemblyRef={motorAssemblyRef} settings={initialBladeSettings} /></group>
     </group>
     <group name="ControllerStage" ref={controllerRef} position={controllerPosition} rotation={[0.02, -0.12, 0]} scale={controllerScale}><ImportedController /></group>
     <group name="CommunicationStage" />
