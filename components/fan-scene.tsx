@@ -1,8 +1,8 @@
 'use client';
 
 import { Environment, OrbitControls, useGLTF } from '@react-three/drei';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box3, DoubleSide, ExtrudeGeometry, Group, Mesh, MeshStandardMaterial, Shape, SRGBColorSpace, Vector3 } from 'three';
 
 const darkGreen = '#0d554f';
@@ -43,6 +43,8 @@ const initialBladeSettings: BladeSettings = {
   pitchDegrees: 22,
   sweepDegrees: 0,
 };
+
+export type ShotMode = 'cinematic' | 'chapters' | 'focus';
 
 const coolingRibShape = new Shape();
 coolingRibShape.moveTo(0, -0.86);
@@ -339,9 +341,99 @@ function PartsStudy() {
   </group>;
 }
 
-export default function FanScene() {
+type CameraRigProps = {
+  mode: ShotMode;
+  chapterProgress: number;
+};
+
+function CameraRig({ mode, chapterProgress }: CameraRigProps) {
+  const { camera } = useThree();
+  const controlsRef = useRef<any>(null);
+  const elapsedRef = useRef(0);
+  const motorPosition = useMemo(() => new Vector3(0.15, 0.12, 8), []);
+  const controllerPosition = useMemo(() => new Vector3(0.45, -1.15, 7.8), []);
+  const motorTarget = useMemo(() => new Vector3(0.15, 0.05, 0), []);
+  const controllerTarget = useMemo(() => new Vector3(0.45, -1.15, 0), []);
+  const nextPosition = useMemo(() => new Vector3(), []);
+  const nextTarget = useMemo(() => new Vector3(), []);
+
+  useEffect(() => {
+    elapsedRef.current = 0;
+    const initialPosition = mode === 'focus' ? motorPosition : new Vector3(0, 0, 8.2);
+    const initialTarget = mode === 'focus' ? motorTarget : new Vector3(0, 0, 0);
+    camera.position.copy(initialPosition);
+    camera.lookAt(initialTarget);
+    if (controlsRef.current) {
+      controlsRef.current.target.copy(initialTarget);
+      controlsRef.current.update();
+    }
+  }, [camera, mode, motorPosition, motorTarget]);
+
+  useFrame((_, delta) => {
+    elapsedRef.current += delta;
+
+    if (mode === 'cinematic') {
+      const cycle = elapsedRef.current % 18;
+      const phase = cycle < 4 ? 0 : cycle < 8 ? (cycle - 4) / 4 : cycle < 14 ? 1 : 1 - (cycle - 14) / 4;
+      const eased = phase * phase * (3 - 2 * phase);
+      nextPosition.lerpVectors(motorPosition, controllerPosition, eased);
+      nextTarget.lerpVectors(motorTarget, controllerTarget, eased);
+      nextPosition.x += Math.sin(elapsedRef.current * 0.32) * 0.22;
+      nextPosition.y += Math.cos(elapsedRef.current * 0.28) * 0.1;
+      camera.position.lerp(nextPosition, Math.min(delta * 3.4, 1));
+      camera.lookAt(nextTarget);
+      if (controlsRef.current) {
+        controlsRef.current.target.copy(nextTarget);
+        controlsRef.current.update();
+      }
+    }
+
+    if (mode === 'chapters') {
+      const eased = chapterProgress * chapterProgress * (3 - 2 * chapterProgress);
+      nextPosition.lerpVectors(motorPosition, controllerPosition, eased);
+      nextTarget.lerpVectors(motorTarget, controllerTarget, eased);
+      camera.position.lerp(nextPosition, Math.min(delta * 5, 1));
+      camera.lookAt(nextTarget);
+      if (controlsRef.current) {
+        controlsRef.current.target.copy(nextTarget);
+        controlsRef.current.update();
+      }
+    }
+
+    if (mode === 'focus' && elapsedRef.current < 4) {
+      const phase = Math.min(elapsedRef.current / 4, 1);
+      const eased = phase * phase * (3 - 2 * phase);
+      nextPosition.lerpVectors(motorPosition, controllerPosition, eased);
+      nextTarget.lerpVectors(motorTarget, controllerTarget, eased);
+      camera.position.lerp(nextPosition, Math.min(delta * 4, 1));
+      camera.lookAt(nextTarget);
+      if (controlsRef.current) {
+        controlsRef.current.target.copy(nextTarget);
+        controlsRef.current.update();
+      }
+    }
+  });
+
   return (
-    <div className="relative h-full w-full">
+    <OrbitControls
+      ref={controlsRef}
+      enablePan={false}
+      enableZoom={mode !== 'chapters'}
+      maxDistance={9}
+      minDistance={5.2}
+    />
+  );
+}
+
+type FanSceneProps = {
+  mode: ShotMode;
+  chapterProgress: number;
+  onChapterWheel: (deltaY: number) => void;
+};
+
+export default function FanScene({ mode, chapterProgress, onChapterWheel }: FanSceneProps) {
+  return (
+    <div className="relative h-full w-full" onWheel={(event) => mode === 'chapters' && onChapterWheel(event.deltaY)}>
       <Canvas camera={{ fov: 38, position: [0, 0, 8.2] }}>
         <color attach="background" args={['#dfece5']} />
         <ambientLight intensity={0.72} />
@@ -349,7 +441,7 @@ export default function FanScene() {
         <directionalLight intensity={1.1} position={[-4, 2, 2]} color="#d9eee6" />
         <Environment preset="warehouse" />
         <PartsStudy />
-        <OrbitControls enablePan={false} maxDistance={9} minDistance={5.2} />
+        <CameraRig mode={mode} chapterProgress={chapterProgress} />
       </Canvas>
     </div>
   );

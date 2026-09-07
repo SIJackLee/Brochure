@@ -1,4 +1,7 @@
-import FanScene from '@/components/fan-scene';
+'use client';
+
+import FanScene, { type ShotMode } from '@/components/fan-scene';
+import { useState } from 'react';
 
 const flowSteps = [
   'Sense climate',
@@ -9,10 +12,26 @@ const flowSteps = [
 ];
 
 export default function Home() {
+  const [shotMode, setShotMode] = useState<ShotMode>('cinematic');
+  const [chapterProgress, setChapterProgress] = useState(0);
+
+  const selectShot = (mode: ShotMode) => {
+    setShotMode(mode);
+    if (mode === 'chapters') setChapterProgress(0);
+  };
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#dfece5] text-[#17241d]">
       <div className="absolute inset-0">
-        <FanScene />
+        <FanScene
+          mode={shotMode}
+          chapterProgress={chapterProgress}
+          onChapterWheel={(deltaY) =>
+            setChapterProgress((progress) =>
+              Math.min(1, Math.max(0, progress + deltaY * 0.0012)),
+            )
+          }
+        />
       </div>
 
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(238,245,240,0.96)_0%,rgba(238,245,240,0.78)_31%,rgba(238,245,240,0.08)_58%,rgba(238,245,240,0)_100%)]" />
@@ -28,9 +47,28 @@ export default function Home() {
               SUNG-IL
             </span>
           </div>
-          <span className="rounded-full border border-[#b8cec1] bg-[#eef5f0]/60 px-3 py-1 text-xs font-medium text-[#4d6b5b] backdrop-blur-md">
-            Smart Ventilation
-          </span>
+          <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-[#b8cec1] bg-[#eef5f0]/70 p-1.5 shadow-[0_10px_28px_rgba(41,83,62,0.08)] backdrop-blur-md">
+            {([
+              ['cinematic', 'Cinematic'],
+              ['chapters', 'Scroll chapters'],
+              ['focus', 'Interactive focus'],
+            ] as const).map(([mode, label], index) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={shotMode === mode}
+                className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+                  shotMode === mode
+                    ? 'bg-[#0f8d4b] text-white shadow-sm'
+                    : 'text-[#4d6b5b] hover:bg-[#dcebe1]'
+                }`}
+                onClick={() => selectShot(mode)}
+              >
+                <span className="mr-1 text-[10px] opacity-70">0{index + 1}</span>
+                {label}
+              </button>
+            ))}
+          </div>
         </header>
 
         <div className="max-w-2xl pb-12 pt-24 sm:pt-28 lg:pb-20">
