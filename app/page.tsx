@@ -140,15 +140,18 @@ export default function Home() {
                 key={section.id === 'motor' ? motorSequence : section.id}
                 className={section.id === 'motor' ? 'motor-copy-sequence' : undefined}
               >
-                <p className="mb-5 text-sm font-semibold uppercase tracking-[0.24em] text-[#0f8d4b]">
-                  {section.eyebrow}
-                </p>
-                <h1 className="max-w-xl text-5xl font-semibold leading-[0.95] text-[#132019] sm:text-7xl lg:text-8xl">
-                  {section.title}
-                </h1>
-                <p className="mt-7 max-w-xl text-lg leading-8 text-[#486457] sm:text-xl sm:leading-9">
-                  {section.description}
-                </p>
+                {section.id === 'motor' && <div aria-hidden="true" className="motor-dust-pad" />}
+                <div className="relative z-[1]">
+                  <p className="mb-5 text-sm font-semibold uppercase tracking-[0.24em] text-[#0f8d4b]">
+                    {section.eyebrow}
+                  </p>
+                  <h1 className="max-w-xl text-5xl font-semibold leading-[0.95] text-[#132019] sm:text-7xl lg:text-8xl">
+                    {section.title}
+                  </h1>
+                  <p className="mt-7 max-w-xl text-lg leading-8 text-[#486457] sm:text-xl sm:leading-9">
+                    {section.description}
+                  </p>
+                </div>
               </div>
 
               {section.id === 'motor' && (
