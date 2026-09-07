@@ -157,6 +157,12 @@ function ImportedController() {
   const { scene } = useGLTF('/models/SL_802B_Controller_Web_v1.glb');
   const model = useMemo(() => {
     const clone = scene.clone(true);
+    const controllerWhitePlastic = new MeshStandardMaterial({
+      color: '#f2f2ed',
+      roughness: 0.46,
+      metalness: 0,
+    });
+
     clone.traverse((object) => {
       if (!(object instanceof Mesh)) return;
 
@@ -175,39 +181,7 @@ function ImportedController() {
         return;
       }
 
-      let material = new MeshStandardMaterial({
-        color: '#1f514a',
-        metalness: 0.22,
-        roughness: 0.4,
-      });
-
-      if (name.includes('display')) {
-        material = new MeshStandardMaterial({
-          color: '#142b2b',
-          metalness: 0.18,
-          roughness: 0.24,
-        });
-      } else if (name.includes('decal')) {
-        material = new MeshStandardMaterial({
-          color: '#68b4a2',
-          metalness: 0.05,
-          roughness: 0.5,
-        });
-      } else if (name.includes('switch')) {
-        material = new MeshStandardMaterial({
-          color: '#101614',
-          metalness: 0.35,
-          roughness: 0.3,
-        });
-      } else if (name.includes('screw')) {
-        material = new MeshStandardMaterial({
-          color: '#aeb9b5',
-          metalness: 0.9,
-          roughness: 0.18,
-        });
-      }
-
-      object.material = material;
+      if (name === 'enclosure_body' || name === 'front_panel') object.material = controllerWhitePlastic;
     });
 
     const root = clone.getObjectByName('SL802B_ROOT') ?? clone;
@@ -313,37 +287,55 @@ function SafetyGrille() {
 }
 
 function PartsStudy() {
+  const studyRef = useRef<Group>(null);
   const motorBodyRef = useRef<Group>(null);
   const controllerRef = useRef<Group>(null);
   const [controllerScale, setControllerScale] = useState(1);
+  const [controllerPosition, setControllerPosition] = useState<[number, number, number]>([0.45, -1.72, 0.12]);
 
   useLayoutEffect(() => {
-    if (!motorBodyRef.current || !controllerRef.current) return;
+    if (!studyRef.current || !motorBodyRef.current || !controllerRef.current) return;
 
+    studyRef.current.updateWorldMatrix(true, true);
     motorBodyRef.current.updateWorldMatrix(true, true);
     controllerRef.current.updateWorldMatrix(true, true);
 
-    const motorBodySize = new Box3().setFromObject(motorBodyRef.current).getSize(new Vector3());
-    const controllerSize = new Box3().setFromObject(controllerRef.current).getSize(new Vector3());
+    const motorBox = new Box3().setFromObject(motorBodyRef.current);
+    const controllerBox = new Box3().setFromObject(controllerRef.current);
+    const motorBodySize = motorBox.getSize(new Vector3());
+    const controllerSize = controllerBox.getSize(new Vector3());
     const motorMaxDimension = Math.max(motorBodySize.x, motorBodySize.y, motorBodySize.z);
     const controllerMaxDimension = Math.max(controllerSize.x, controllerSize.y, controllerSize.z);
 
     if (motorMaxDimension <= 0 || controllerMaxDimension <= 0) return;
 
-    const nextScale = (motorMaxDimension * 0.95) / controllerMaxDimension;
-    setControllerScale(nextScale);
+    if (controllerScale === 1) setControllerScale((motorMaxDimension * 0.95) / controllerMaxDimension);
+
+    const motorCenter = motorBox.getCenter(new Vector3());
+    const horizontalGap = motorBodySize.x * 0.08;
+    const verticalGap = motorBodySize.y * 0.2;
+    const depthOffset = controllerSize.z * 0.1;
+    const controllerWorldCenter = new Vector3(
+      motorBox.max.x + horizontalGap - controllerSize.x / 2,
+      motorBox.min.y - verticalGap - controllerSize.y / 2,
+      motorCenter.z - depthOffset,
+    );
+    const controllerLocalCenter = studyRef.current.worldToLocal(controllerWorldCenter);
+    setControllerPosition([controllerLocalCenter.x, controllerLocalCenter.y, controllerLocalCenter.z]);
+
     console.info('[SL802B] automatic scale from motor body bounds', {
       motorBodySize,
       controllerSize,
       targetRatio: 0.95,
-      controllerScale: nextScale,
+      controllerScale,
+      controllerPosition: controllerLocalCenter,
     });
-  }, []);
+  }, [controllerScale]);
 
-  return <group position={[0.55, 0.05, 0]} rotation={[0.06, -0.3, 0]} scale={0.72}>
+  return <group ref={studyRef} position={[0.55, 0.05, 0]} rotation={[0.06, -0.3, 0]} scale={0.72}>
     <group ref={motorBodyRef} position={[0.25, 0.15, 0]} rotation={[0, 0, Math.PI / 2]} scale={0.008}><ImportedMotor /></group>
     <group position={[-0.76, 0.15, 0]} scale={0.42}><BladeRotor settings={initialBladeSettings} /></group>
-    <group ref={controllerRef} position={[0.45, -1.72, 0.12]} rotation={[0.02, -0.12, 0]} scale={controllerScale}><ImportedController /></group>
+    <group ref={controllerRef} position={controllerPosition} rotation={[0.02, -0.12, 0]} scale={controllerScale}><ImportedController /></group>
   </group>;
 }
 
