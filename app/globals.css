@@ -143,13 +143,13 @@ body {
   }
   48% {
     opacity: 0.72;
-    transform: translate3d(8%, 0, 0) scaleX(1.03);
+    transform: translate3d(-8%, 0, 0) scaleX(1.03);
     clip-path: inset(0 0 0 0 round 1.5rem);
   }
   100% {
     opacity: 0;
-    transform: translate3d(118%, 0, 0) scaleX(0.8);
-    clip-path: inset(0 0 0 100% round 1.5rem);
+    transform: translate3d(-118%, 0, 0) scaleX(0.8);
+    clip-path: inset(0 100% 0 0 round 1.5rem);
   }
 }
 
