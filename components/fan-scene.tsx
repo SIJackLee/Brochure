@@ -330,6 +330,17 @@ function BladeRotor({ settings, active, assemblyRef }: { settings: BladeSettings
       : Math.max(0, Math.min(1, (elapsed - 2.65) / 0.7));
     const easedAssembly = assemblyProgress * assemblyProgress * (3 - 2 * assemblyProgress);
     rotorRef.current.position.x = -0.72 * (1 - easedAssembly);
+    // Fade the complete rotor assembly, including the red and black hub meshes.
+    rotorRef.current.traverse((child) => {
+      if (!(child instanceof Mesh)) return;
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.forEach((material) => {
+        material.transparent = true;
+        material.opacity = easedAssembly;
+        material.depthWrite = easedAssembly > 0.98;
+        material.needsUpdate = true;
+      });
+    });
     bladeMaterial.opacity = easedAssembly;
     bladeMaterial.needsUpdate = true;
 
