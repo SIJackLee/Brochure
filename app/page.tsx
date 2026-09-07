@@ -39,6 +39,7 @@ const sections: Array<{
 
 export default function Home() {
   const [activeSection, setActiveSection] = useState<SectionId>('motor');
+  const [motorSequence, setMotorSequence] = useState(0);
   const navigationLockRef = useRef(false);
   const navigationUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
@@ -47,6 +48,10 @@ export default function Home() {
     communication: null,
     cloud: null,
   });
+
+  useEffect(() => {
+    if (activeSection === 'motor') setMotorSequence((sequence) => sequence + 1);
+  }, [activeSection]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -131,15 +136,20 @@ export default function Home() {
             className="relative flex min-h-[100svh] snap-start items-center px-6 py-28 sm:px-10 lg:px-14"
           >
             <div className="max-w-2xl pb-14 pt-10 sm:pb-20 sm:pt-20">
-              <p className="mb-5 text-sm font-semibold uppercase tracking-[0.24em] text-[#0f8d4b]">
-                {section.eyebrow}
-              </p>
-              <h1 className="max-w-xl text-5xl font-semibold leading-[0.95] text-[#132019] sm:text-7xl lg:text-8xl">
-                {section.title}
-              </h1>
-              <p className="mt-7 max-w-xl text-lg leading-8 text-[#486457] sm:text-xl sm:leading-9">
-                {section.description}
-              </p>
+              <div
+                key={section.id === 'motor' ? motorSequence : section.id}
+                className={section.id === 'motor' ? 'motor-copy-sequence' : undefined}
+              >
+                <p className="mb-5 text-sm font-semibold uppercase tracking-[0.24em] text-[#0f8d4b]">
+                  {section.eyebrow}
+                </p>
+                <h1 className="max-w-xl text-5xl font-semibold leading-[0.95] text-[#132019] sm:text-7xl lg:text-8xl">
+                  {section.title}
+                </h1>
+                <p className="mt-7 max-w-xl text-lg leading-8 text-[#486457] sm:text-xl sm:leading-9">
+                  {section.description}
+                </p>
+              </div>
 
               {section.id === 'motor' && (
                 <div className="mt-10 flex flex-wrap gap-3">
