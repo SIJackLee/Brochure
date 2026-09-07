@@ -314,11 +314,13 @@ function PartsStudy() {
     if (controllerScale === 1) setControllerScale((motorMaxDimension * 0.95) / controllerMaxDimension);
 
     const motorCenter = motorBox.getCenter(new Vector3());
-    const horizontalGap = motorBodySize.x * 0.08;
-    const verticalGap = motorBodySize.y * 0.2;
+    // Keep the controller as a separate product block. The gap is derived from
+    // the measured motor/controller bounds so this remains stable with GLB scale.
+    const horizontalGap = motorBodySize.x * 0.24;
+    const verticalGap = motorBodySize.y * 0.32;
     const depthOffset = controllerSize.z * 0.1;
     const controllerWorldCenter = new Vector3(
-      motorBox.max.x + horizontalGap - controllerSize.x / 2,
+      motorBox.max.x + horizontalGap + controllerSize.x / 2,
       motorBox.min.y - verticalGap - controllerSize.y / 2,
       motorCenter.z - depthOffset,
     );
@@ -350,10 +352,10 @@ function CameraRig({ mode, chapterProgress }: CameraRigProps) {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
   const elapsedRef = useRef(0);
-  const motorPosition = useMemo(() => new Vector3(0.15, 0.12, 8), []);
-  const controllerPosition = useMemo(() => new Vector3(0.45, -1.15, 7.8), []);
-  const motorTarget = useMemo(() => new Vector3(0.15, 0.05, 0), []);
-  const controllerTarget = useMemo(() => new Vector3(0.45, -1.15, 0), []);
+  const motorPosition = useMemo(() => new Vector3(-0.15, 0.18, 9.2), []);
+  const controllerPosition = useMemo(() => new Vector3(1.35, -1.62, 8.65), []);
+  const motorTarget = useMemo(() => new Vector3(-0.15, 0.12, 0), []);
+  const controllerTarget = useMemo(() => new Vector3(1.28, -1.58, 0), []);
   const nextPosition = useMemo(() => new Vector3(), []);
   const nextTarget = useMemo(() => new Vector3(), []);
 
