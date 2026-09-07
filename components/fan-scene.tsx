@@ -101,12 +101,12 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
       // fixed anchor. The remaining parts begin to its screen-left, then
       // travel along local Y into the final assembly position.
       ['pcb_cover_assy', -30, 0.18, 0.82],
-      ['extrusion_housing', 25, 0.38, 1.02],
-      ['st_assy', 80, 0.58, 1.22],
-      ['housing_upper', 135, 0.78, 1.42],
-      ['front_cover', 190, 0.98, 1.62],
-      ['bearing', 240, 1.18, 1.82],
-      ['shaft', 300, 1.38, 2.08],
+      ['extrusion_housing', 80, 0.38, 1.02],
+      ['st_assy', 190, 0.58, 1.22],
+      ['housing_upper', 300, 0.78, 1.42],
+      ['front_cover', 410, 0.98, 1.62],
+      ['bearing', 510, 1.18, 1.82],
+      ['shaft', 630, 1.38, 2.08],
     ] as const;
     const assemblyParts = new Map(assemblyOrder.map(([name, explodedCenter, start, end]) => [name, { explodedCenter, start, end }]));
 
