@@ -97,16 +97,18 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
     const rotatingMeshes: Mesh[] = [];
     const animationParts: MotorPartEntry[] = [];
     const assemblyOrder = [
-      ['housing_lower', -88, 0.15, 0.75],
-      ['pcb_cover_assy', -118, 0.35, 0.95],
-      ['extrusion_housing', -52, 0.55, 1.15],
-      ['st_assy', 52, 0.75, 1.35],
-      ['housing_upper', 84, 0.82, 1.42],
-      ['front_cover', 112, 1.0, 1.6],
-      ['bearing', 138, 1.22, 1.82],
-      ['shaft', 156, 1.35, 2.05],
+      // Desired exploded centers are ordered along local Y. The parent rotates
+      // local Y into screen X, so larger Y values appear farther left.
+      ['housing_lower', -145, 0.15, 0.75],
+      ['pcb_cover_assy', -95, 0.35, 0.95],
+      ['extrusion_housing', -40, 0.55, 1.15],
+      ['st_assy', 15, 0.75, 1.35],
+      ['housing_upper', 80, 0.82, 1.42],
+      ['front_cover', 145, 1.0, 1.6],
+      ['bearing', 195, 1.22, 1.82],
+      ['shaft', 270, 1.35, 2.05],
     ] as const;
-    const assemblyParts = new Map(assemblyOrder.map(([name, offset, start, end]) => [name, { offset, start, end }]));
+    const assemblyParts = new Map(assemblyOrder.map(([name, explodedCenter, start, end]) => [name, { explodedCenter, start, end }]));
 
     clone.traverse((object) => {
       if (!(object instanceof Mesh)) return;
@@ -171,11 +173,16 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
 
       const part = assemblyParts.get(name);
       if (part) {
+        object.geometry.computeBoundingBox();
+        const geometryCenterY = object.geometry.boundingBox
+          ? (object.geometry.boundingBox.min.y + object.geometry.boundingBox.max.y) / 2
+          : 0;
+        const assembledCenterY = object.position.y + geometryCenterY * object.scale.y;
         animationParts.push({
           object,
           assembledPosition: object.position.clone(),
           assembledRotation: new Vector3(object.rotation.x, object.rotation.y, object.rotation.z),
-          explodedOffset: part.offset,
+          explodedOffset: part.explodedCenter - assembledCenterY,
           start: part.start,
           end: part.end,
         });
@@ -394,27 +401,21 @@ function PartsStudy({ activeSection }: { activeSection: SectionId }) {
   const motorAssemblyRef = useRef<MotorAssemblyRef>({ elapsed: 0, state: 'exploded', hasPlayed: false });
   const introClockRef = useRef(0);
   const motorReadyRef = useRef(false);
-  const hasMotorIntroPlayedRef = useRef(false);
   const [controllerScale, setControllerScale] = useState(1);
   const [controllerPosition, setControllerPosition] = useState<[number, number, number]>([0.45, -1.72, 0.12]);
 
   useEffect(() => {
     if (activeSection === 'motor') {
-      if (hasMotorIntroPlayedRef.current) {
-        motorAssemblyRef.current = { elapsed: 5, state: 'showcase', hasPlayed: true };
-      } else {
-        introClockRef.current = 0;
-        motorAssemblyRef.current = { elapsed: 0, state: 'exploded', hasPlayed: false };
-      }
+      introClockRef.current = 0;
+      motorAssemblyRef.current = { elapsed: 0, state: 'exploded', hasPlayed: false };
       return;
     }
 
-    if (!hasMotorIntroPlayedRef.current) hasMotorIntroPlayedRef.current = true;
     motorAssemblyRef.current = { elapsed: 5, state: 'showcase', hasPlayed: true };
   }, [activeSection]);
 
   useFrame((_, delta) => {
-    if (activeSection !== 'motor' || hasMotorIntroPlayedRef.current || !motorReadyRef.current) return;
+    if (activeSection !== 'motor' || !motorReadyRef.current) return;
 
     introClockRef.current += delta;
     const elapsed = Math.min(introClockRef.current, 5);
@@ -430,7 +431,6 @@ function PartsStudy({ activeSection }: { activeSection: SectionId }) {
     motorAssemblyRef.current = { elapsed, state, hasPlayed: false };
 
     if (elapsed >= 5) {
-      hasMotorIntroPlayedRef.current = true;
       motorAssemblyRef.current = { elapsed: 5, state: 'showcase', hasPlayed: true };
     }
   });
