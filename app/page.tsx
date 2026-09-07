@@ -99,7 +99,14 @@ export default function Home() {
         <FanScene activeSection={activeSection} />
       </div>
 
-      <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(90deg,rgba(238,245,240,0.98)_0%,rgba(238,245,240,0.82)_28%,rgba(238,245,240,0.12)_62%,rgba(238,245,240,0)_100%)]" />
+      <div
+        className="pointer-events-none fixed inset-0 z-[1]"
+        style={{
+          background: activeSection === 'motor'
+            ? 'linear-gradient(90deg, rgba(238,245,240,0.84) 0%, rgba(238,245,240,0.70) 28%, rgba(238,245,240,0.12) 62%, rgba(238,245,240,0) 100%)'
+            : 'linear-gradient(90deg, rgba(238,245,240,0.98) 0%, rgba(238,245,240,0.82) 28%, rgba(238,245,240,0.12) 62%, rgba(238,245,240,0) 100%)',
+        }}
+      />
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[1] h-48 bg-[linear-gradient(0deg,rgba(238,245,240,0.9)_0%,rgba(238,245,240,0)_100%)]" />
 
       <header className="pointer-events-none fixed inset-x-0 top-0 z-30 flex items-center justify-between px-6 py-6 sm:px-10 lg:px-14">

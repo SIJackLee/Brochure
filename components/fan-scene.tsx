@@ -215,7 +215,7 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
     const spinProgress = state === 'spinning'
       ? Math.max(0, Math.min(1, (elapsed - 3.35) / 1.0))
       : state === 'showcase' ? 1 : 0;
-    const speed = 1.4 * (spinProgress * spinProgress * (3 - 2 * spinProgress));
+    const speed = 2.8 * (spinProgress * spinProgress * (3 - 2 * spinProgress));
     // The imported motor is rotated 90 degrees by its parent group, so invert
     // the local Y direction to match the fan rotor's world-space rotation.
     model.rotatingParts.rotation.y -= delta * speed;
@@ -356,7 +356,7 @@ function BladeRotor({ settings, active, assemblyRef }: { settings: BladeSettings
     const spinProgress = state === 'spinning'
       ? Math.max(0, Math.min(1, (elapsed - 3.35) / 1.0))
       : state === 'showcase' ? 1 : 0;
-    const speed = 1.4 * (spinProgress * spinProgress * (3 - 2 * spinProgress));
+    const speed = 2.8 * (spinProgress * spinProgress * (3 - 2 * spinProgress));
     rotorRef.current.rotation.x += delta * speed;
   });
 
@@ -382,6 +382,50 @@ function BladeRotor({ settings, active, assemblyRef }: { settings: BladeSettings
           <mesh geometry={bladeGeometry} material={bladeMaterial} position={[0.08, settings.radialOffset, -settings.thickness / 2]} rotation={[0, pitch, 0]} />
         </group>
       </group>
+    ))}
+  </group>;
+}
+
+function OdorCloud({ active, assemblyRef }: { active: boolean; assemblyRef: MutableRefObject<MotorAssemblyRef> }) {
+  const cloudRef = useRef<Group>(null);
+  const cloudMaterial = useMemo(() => new MeshStandardMaterial({
+    color: '#8a8068',
+    transparent: true,
+    opacity: 0.36,
+    roughness: 0.96,
+    metalness: 0,
+    depthWrite: false,
+  }), []);
+  const cloudMasses = useMemo(() => [
+    { position: [-0.88, 0.12, -0.22] as [number, number, number], scale: [0.74, 0.48, 0.38] as [number, number, number] },
+    { position: [-0.16, -0.02, -0.14] as [number, number, number], scale: [0.96, 0.56, 0.46] as [number, number, number] },
+    { position: [0.68, 0.08, -0.2] as [number, number, number], scale: [0.78, 0.42, 0.34] as [number, number, number] },
+    { position: [1.22, -0.14, -0.16] as [number, number, number], scale: [0.54, 0.3, 0.26] as [number, number, number] },
+  ], []);
+
+  useFrame((_, delta) => {
+    if (!cloudRef.current) return;
+    const { elapsed, state } = assemblyRef.current;
+    const clearProgress = state === 'spinning'
+      ? Math.max(0, Math.min(1, (elapsed - 3.35) / 1.0))
+      : state === 'showcase' ? 1 : 0;
+    const easedClear = clearProgress * clearProgress * (3 - 2 * clearProgress);
+    const targetOpacity = active ? 0.36 * (1 - easedClear) : 0;
+    cloudMaterial.opacity += (targetOpacity - cloudMaterial.opacity) * Math.min(1, delta * 5);
+    cloudMaterial.needsUpdate = true;
+
+    cloudRef.current.position.x = -1.75 + easedClear * 2.8;
+    cloudRef.current.position.y = Math.sin(elapsed * 0.8) * 0.05;
+    cloudRef.current.scale.setScalar(1 - easedClear * 0.18);
+    cloudRef.current.rotation.z += delta * (0.08 + easedClear * 0.18);
+  });
+
+  return <group ref={cloudRef} position={[-1.75, 0.12, -0.58]} renderOrder={-1}>
+    {cloudMasses.map((mass, index) => (
+      <mesh key={index} position={mass.position} scale={mass.scale} renderOrder={-1}>
+        <sphereGeometry args={[0.72, 24, 16]} />
+        <primitive object={cloudMaterial} attach="material" />
+      </mesh>
     ))}
   </group>;
 }
@@ -477,6 +521,7 @@ function PartsStudy({ activeSection }: { activeSection: SectionId }) {
   }, [controllerScale]);
 
   return <group ref={studyRef} name="ProductStages" position={[0.55, 0.05, 0]} rotation={[0.06, -0.3, 0]} scale={0.72}>
+    <OdorCloud active={activeSection === 'motor'} assemblyRef={motorAssemblyRef} />
     <group name="MotorStage" position={[0.25, 0.15, 0]}>
       <group ref={motorBodyRef} rotation={[0, 0, Math.PI / 2]} scale={0.008}><ImportedMotor active={activeSection === 'motor'} assemblyRef={motorAssemblyRef} onReady={() => { motorReadyRef.current = true; }} /></group>
       <group position={[-0.76, 0, 0]} scale={0.42}><BladeRotor active={activeSection === 'motor'} assemblyRef={motorAssemblyRef} settings={initialBladeSettings} /></group>
