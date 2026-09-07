@@ -8,6 +8,7 @@ const sections: Array<{
   eyebrow: string;
   title: string;
   description: string;
+  mobileDescription: string;
 }> = [
   {
     id: 'motor',
@@ -15,6 +16,8 @@ const sections: Array<{
     title: 'Control the Climate',
     description:
       'A BLDC motor and axial fan built to move air through windowless pig houses with steady, precise control.',
+    mobileDescription:
+      'A BLDC motor and axial fan made for precise airflow in windowless pig houses.',
   },
   {
     id: 'controller',
@@ -22,16 +25,23 @@ const sections: Array<{
     title: 'Control at the source',
     description:
       'SL-802B turns site conditions into ventilation commands, and the communication module links field devices to the cloud.',
+    mobileDescription:
+      'SL-802B turns site conditions into commands and links devices to the cloud.',
   },
   {
     id: 'cloud',
     eyebrow: '03 / CLOUD & DASHBOARD',
     title: 'See what the system knows',
     description: 'Monitor. Analyze. Control. The dashboard brings field data into one clear operating view.',
+    mobileDescription: 'Monitor, analyze, and control field data in one dashboard view.',
   },
 ];
 
+type DevViewport = 'pc' | 'mobile';
+
 export default function Home() {
+  const [devViewport, setDevViewport] = useState<DevViewport>('pc');
+  const [isNarrowScreen, setIsNarrowScreen] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>('motor');
   const [motorSequence, setMotorSequence] = useState(0);
   const [dustWashing, setDustWashing] = useState(false);
@@ -42,8 +52,21 @@ export default function Home() {
     controller: null,
     cloud: null,
   });
-
   const dustWashDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const mobileLayout = devViewport === 'mobile' || isNarrowScreen;
+  const previewFrame = devViewport === 'mobile';
+  const shellH = previewFrame ? 'min-h-[calc(min(844px,100svh-5.5rem))]' : 'min-h-[100svh]';
+  const stageH = previewFrame ? 'h-full' : 'h-[100svh]';
+  const stagePos = previewFrame ? 'absolute' : 'fixed';
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 640px)');
+    const sync = () => setIsNarrowScreen(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
 
   useEffect(() => {
     if (activeSection !== 'motor') {
@@ -58,9 +81,12 @@ export default function Home() {
     if (activeSection === 'motor') setMotorSequence((sequence) => sequence + 1);
   }, [activeSection]);
 
-  useEffect(() => () => {
-    if (dustWashDelayRef.current) clearTimeout(dustWashDelayRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (dustWashDelayRef.current) clearTimeout(dustWashDelayRef.current);
+    },
+    [],
+  );
 
   const handleMotorPhaseChange = (phase: MotorSceneState) => {
     if (phase === 'exploded') {
@@ -69,7 +95,6 @@ export default function Home() {
       setDustWashing(false);
       return;
     }
-    // Causality: 3D exhaust starts on spinning; dust wash follows after a short lead-in.
     if (phase === 'spinning') {
       if (dustWashDelayRef.current) clearTimeout(dustWashDelayRef.current);
       dustWashDelayRef.current = setTimeout(() => {
@@ -100,7 +125,7 @@ export default function Home() {
       observer.disconnect();
       if (navigationUnlockTimerRef.current) clearTimeout(navigationUnlockTimerRef.current);
     };
-  }, []);
+  }, [devViewport]);
 
   const scrollToSection = (id: SectionId) => {
     const target = sectionRefs.current[id];
@@ -124,42 +149,76 @@ export default function Home() {
     if (nextIndex !== currentIndex) scrollToSection(sections[nextIndex].id);
   };
 
-  return (
-    <main onWheel={handleWheel} className="relative min-h-screen select-none overflow-x-hidden bg-[#dfece5] text-[#17241d]">
+  const brochure = (
+    <main
+      onWheel={handleWheel}
+      data-mobile={mobileLayout ? 'true' : 'false'}
+      className={`relative select-none overflow-x-hidden bg-[#dfece5] text-[#17241d] ${
+        previewFrame ? 'h-full overflow-y-auto overscroll-contain' : 'min-h-screen'
+      }`}
+    >
+      {/* 3D stage — full shell; camera frames product into the upper mid band on mobile */}
       <div
-        className={`fixed inset-0 z-0 h-[100svh] ${
+        className={`${stagePos} inset-0 z-0 ${stageH} ${
           activeSection === 'motor' ? 'pointer-events-auto' : 'pointer-events-none'
         }`}
       >
         <FanScene
           activeSection={activeSection}
           onMotorPhaseChange={handleMotorPhaseChange}
+          mobileLayout={mobileLayout}
         />
       </div>
 
-      {activeSection === 'controller' ? (
-        // Fog only the copy column so the right empty stage stays crisp.
+      {mobileLayout ? (
+        // Soft readability only near copy / chrome; mid band stays open for 3D.
         <div
-          className="pointer-events-none fixed inset-y-0 left-0 z-[1] w-[min(100%,36rem)] bg-[linear-gradient(90deg,rgba(238,245,240,0.95)_0%,rgba(238,245,240,0.55)_72%,rgba(238,245,240,0)_100%)] sm:w-[min(100%,40rem)] lg:w-[min(100%,44rem)]"
+          className={`pointer-events-none ${stagePos} inset-0 z-[1] bg-[linear-gradient(180deg,rgba(238,245,240,0.55)_0%,rgba(238,245,240,0.08)_14%,rgba(238,245,240,0)_38%,rgba(238,245,240,0.12)_62%,rgba(238,245,240,0.82)_100%)]`}
         />
+      ) : activeSection === 'controller' ? (
+        <div className="pointer-events-none fixed inset-y-0 left-0 z-[1] w-[min(100%,36rem)] bg-[linear-gradient(90deg,rgba(238,245,240,0.95)_0%,rgba(238,245,240,0.55)_72%,rgba(238,245,240,0)_100%)] sm:w-[min(100%,40rem)] lg:w-[min(100%,44rem)]" />
       ) : (
         <div
           className="pointer-events-none fixed inset-0 z-[1]"
           style={{
-            background: activeSection === 'motor'
-              ? 'linear-gradient(90deg, rgba(238,245,240,0.84) 0%, rgba(238,245,240,0.70) 28%, rgba(238,245,240,0.12) 62%, rgba(238,245,240,0) 100%)'
-              : 'linear-gradient(90deg, rgba(238,245,240,0.98) 0%, rgba(238,245,240,0.82) 28%, rgba(238,245,240,0.12) 62%, rgba(238,245,240,0) 100%)',
+            background:
+              activeSection === 'motor'
+                ? 'linear-gradient(90deg, rgba(238,245,240,0.84) 0%, rgba(238,245,240,0.70) 28%, rgba(238,245,240,0.12) 62%, rgba(238,245,240,0) 100%)'
+                : 'linear-gradient(90deg, rgba(238,245,240,0.98) 0%, rgba(238,245,240,0.82) 28%, rgba(238,245,240,0.12) 62%, rgba(238,245,240,0) 100%)',
           }}
         />
       )}
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[1] h-48 bg-[linear-gradient(0deg,rgba(238,245,240,0.9)_0%,rgba(238,245,240,0)_100%)]" />
+      {!mobileLayout && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[1] h-48 bg-[linear-gradient(0deg,rgba(238,245,240,0.9)_0%,rgba(238,245,240,0)_100%)]" />
+      )}
 
-      <header className="pointer-events-none fixed inset-x-0 top-0 z-30 flex items-center justify-between px-6 py-6 sm:px-10 lg:px-14">
-        <div className="flex items-center gap-3">
-          <span className="grid size-9 place-items-center rounded-md bg-[#0f8d4b] text-sm font-black text-white">SI</span>
-          <span className="text-sm font-semibold tracking-[0.18em] text-[#0f8d4b]">SUNG-IL</span>
+      {/* Fixed top chrome */}
+      <header
+        className={`pointer-events-none ${stagePos} inset-x-0 top-0 z-30 flex items-center justify-between ${
+          mobileLayout ? 'px-4 pb-2 pt-7' : 'px-6 py-6 sm:px-10 lg:px-14'
+        }`}
+      >
+        <div className={`flex items-center ${mobileLayout ? 'gap-2' : 'gap-3'}`}>
+          <span
+            className={`grid place-items-center rounded-md bg-[#0f8d4b] font-black text-white ${
+              mobileLayout ? 'size-8 text-xs' : 'size-9 text-sm'
+            }`}
+          >
+            SI
+          </span>
+          <span
+            className={`font-semibold tracking-[0.18em] text-[#0f8d4b] ${
+              mobileLayout ? 'text-xs' : 'text-sm'
+            }`}
+          >
+            SUNG-IL
+          </span>
         </div>
-        <span className="rounded-full border border-[#b8cec1] bg-[#eef5f0]/70 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[#4d6b5b] backdrop-blur-md">
+        <span
+          className={`rounded-full border border-[#b8cec1] bg-[#eef5f0]/70 font-semibold uppercase tracking-[0.14em] text-[#4d6b5b] backdrop-blur-md ${
+            mobileLayout ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-xs'
+          }`}
+        >
           {sections.find((section) => section.id === activeSection)?.eyebrow}
         </span>
       </header>
@@ -173,42 +232,74 @@ export default function Home() {
             ref={(element) => {
               sectionRefs.current[section.id] = element;
             }}
-            className="relative flex min-h-[100svh] snap-start items-center px-6 py-28 sm:px-10 lg:px-14"
+            className={
+              mobileLayout
+                ? // Mid band: top flex grows for 3D, bottom holds copy.
+                  `relative flex ${shellH} snap-start flex-col px-4 pb-[4.75rem] pt-[3.75rem]`
+                : 'relative flex min-h-[100svh] snap-start items-center px-6 py-28 sm:px-10 lg:px-14'
+            }
           >
-            <div className="pointer-events-auto max-w-2xl pb-14 pt-10 sm:pb-20 sm:pt-20">
+            {mobileLayout && (
+              <div className="pointer-events-none min-h-0 flex-1" aria-hidden="true" />
+            )}
+
+            <div
+              className={`pointer-events-auto ${
+                mobileLayout
+                  ? 'mobile-copy-panel w-full shrink-0 rounded-[1.1rem] px-3.5 pb-3.5 pt-3.5'
+                  : 'max-w-2xl pb-14 pt-10 sm:pb-20 sm:pt-20'
+              }`}
+            >
               <div
                 key={section.id === 'motor' ? motorSequence : section.id}
                 className={section.id === 'motor' ? 'motor-copy-sequence' : undefined}
               >
                 {section.id === 'motor' && (
-                  <div
-                    aria-hidden="true"
-                    className={`motor-dust-pad${dustWashing ? ' is-washing' : ''}`}
-                  />
+                  <div aria-hidden="true" className={`motor-dust-pad${dustWashing ? ' is-washing' : ''}`} />
                 )}
                 <div className="relative z-[1]">
-                  <p className="mb-5 text-sm font-semibold uppercase tracking-[0.24em] text-[#0f8d4b]">
+                  <p
+                    className={`font-semibold uppercase tracking-[0.24em] text-[#0f8d4b] ${
+                      mobileLayout ? 'mb-2 text-[11px]' : 'mb-5 text-sm'
+                    }`}
+                  >
                     {section.eyebrow}
                   </p>
-                  <h1 className="max-w-xl text-5xl font-semibold leading-[0.95] text-[#132019] sm:text-7xl lg:text-8xl">
+                  <h1
+                    className={`font-semibold leading-[0.95] text-[#132019] ${
+                      mobileLayout
+                        ? 'max-w-[13ch] text-[1.9rem]'
+                        : 'max-w-xl text-5xl sm:text-7xl lg:text-8xl'
+                    }`}
+                  >
                     {section.title}
                   </h1>
-                  <p className="mt-7 max-w-xl text-lg leading-8 text-[#486457] sm:text-xl sm:leading-9">
-                    {section.description}
+                  <p
+                    className={`text-[#486457] ${
+                      mobileLayout
+                        ? 'mt-2.5 max-w-[34ch] text-[0.86rem] leading-5'
+                        : 'mt-7 max-w-xl text-lg leading-8 sm:text-xl sm:leading-9'
+                    }`}
+                  >
+                    {mobileLayout ? section.mobileDescription : section.description}
                   </p>
                 </div>
               </div>
 
               {section.id === 'motor' && (
-                <div className="mt-10 flex flex-wrap gap-3">
+                <div className={`flex flex-wrap gap-2.5 ${mobileLayout ? 'mt-4' : 'mt-10 gap-3'}`}>
                   <a
-                    className="select-none rounded-full bg-[#0f8d4b] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(15,141,75,0.26)]"
+                    className={`select-none rounded-full bg-[#0f8d4b] font-semibold text-white shadow-[0_16px_34px_rgba(15,141,75,0.26)] ${
+                      mobileLayout ? 'px-4 py-2.5 text-xs' : 'px-5 py-3 text-sm'
+                    }`}
                     href="https://autofankorea.com/"
                   >
                     Homepage
                   </a>
                   <a
-                    className="select-none rounded-full border border-[#9fbaaa] bg-[#eef5f0]/62 px-5 py-3 text-sm font-semibold text-[#254736] backdrop-blur-md"
+                    className={`select-none rounded-full border border-[#9fbaaa] bg-[#eef5f0]/62 font-semibold text-[#254736] backdrop-blur-md ${
+                      mobileLayout ? 'px-4 py-2.5 text-xs' : 'px-5 py-3 text-sm'
+                    }`}
                     href="https://smart.autofankorea.com/"
                   >
                     Dashboard
@@ -217,32 +308,92 @@ export default function Home() {
               )}
             </div>
 
-            <span className="pointer-events-none absolute bottom-24 right-6 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#72907f] sm:right-10 lg:right-14">
-              0{index + 1} / 0{sections.length}
-            </span>
+            {!mobileLayout && (
+              <span className="pointer-events-none absolute bottom-24 right-6 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#72907f] sm:right-10 lg:right-14">
+                0{index + 1} / 0{sections.length}
+              </span>
+            )}
           </section>
         ))}
       </div>
 
-      <nav className="pointer-events-auto fixed inset-x-6 bottom-4 z-30 grid grid-cols-3 gap-2 sm:inset-x-10 lg:inset-x-14">
-        {sections.map((section, index) => (
-          <button
-            key={section.id}
-            type="button"
-            aria-label={`Go to ${section.title}`}
-            aria-current={activeSection === section.id ? 'step' : undefined}
-            className={`flex min-h-12 items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm backdrop-blur-md transition-colors ${
-              activeSection === section.id
-                ? 'border-[#0f8d4b] bg-[#eef5f0]/86 text-[#244f38]'
-                : 'border-[#c9dbd0] bg-[#eef5f0]/58 text-[#516f61] hover:bg-[#eef5f0]/86'
-            }`}
-            onClick={() => scrollToSection(section.id)}
-          >
-            <span className="text-xs font-bold text-[#0f8d4b]">{String(index + 1).padStart(2, '0')}</span>
-            <span className="truncate">{section.title}</span>
-          </button>
-        ))}
+      {/* Fixed bottom chrome */}
+      <nav
+        className={`pointer-events-auto ${stagePos} z-30 grid grid-cols-3 ${
+          mobileLayout
+            ? 'inset-x-3 bottom-3 gap-1.5'
+            : 'inset-x-6 bottom-4 gap-2 sm:inset-x-10 lg:inset-x-14'
+        }`}
+      >
+        {sections.map((section, index) => {
+          const mobileLabel =
+            section.id === 'motor' ? 'Drive' : section.id === 'controller' ? 'Control' : 'Cloud';
+          return (
+            <button
+              key={section.id}
+              type="button"
+              aria-label={`Go to ${section.title}`}
+              aria-current={activeSection === section.id ? 'step' : undefined}
+              className={`flex items-center rounded-lg border text-left backdrop-blur-md transition-colors ${
+                mobileLayout
+                  ? 'min-h-11 flex-col justify-center gap-0.5 px-1.5 py-1.5'
+                  : 'min-h-12 gap-3 px-3 py-2 text-sm'
+              } ${
+                activeSection === section.id
+                  ? 'border-[#0f8d4b] bg-[#eef5f0]/86 text-[#244f38]'
+                  : 'border-[#c9dbd0] bg-[#eef5f0]/58 text-[#516f61] hover:bg-[#eef5f0]/86'
+              }`}
+              onClick={() => scrollToSection(section.id)}
+            >
+              <span className={`font-bold text-[#0f8d4b] ${mobileLayout ? 'text-[10px]' : 'text-xs'}`}>
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <span className={`truncate ${mobileLayout ? 'max-w-full text-[11px] leading-tight' : ''}`}>
+                {mobileLayout ? mobileLabel : section.title}
+              </span>
+            </button>
+          );
+        })}
       </nav>
     </main>
+  );
+
+  return (
+    <>
+      <div className="pointer-events-auto fixed left-1/2 top-3 z-[120] flex -translate-x-1/2 items-center gap-1 rounded-full border border-[#9fbaaa] bg-[#132019]/88 p-1 shadow-[0_12px_30px_rgba(19,32,25,0.28)] backdrop-blur-md">
+        <span className="px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#b7d0c2]">
+          Dev
+        </span>
+        {(['pc', 'mobile'] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            aria-pressed={devViewport === mode}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+              devViewport === mode ? 'bg-[#0f8d4b] text-white' : 'text-[#d7ebe1] hover:bg-white/10'
+            }`}
+            onClick={() => setDevViewport(mode)}
+          >
+            {mode === 'pc' ? 'PC뷰' : '모바일뷰'}
+          </button>
+        ))}
+      </div>
+
+      {devViewport === 'mobile' ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#101814] px-4 pb-4 pt-14">
+          <div className="pointer-events-none absolute inset-x-0 top-14 text-center text-[11px] font-medium tracking-[0.18em] text-[#7f9a8c]">
+            MOBILE PREVIEW · 390 × 844
+          </div>
+          <div className="relative h-[min(844px,calc(100svh-5.5rem))] w-[min(390px,100%)] overflow-hidden rounded-[2rem] border border-[#2c3d34] bg-[#dfece5] shadow-[0_30px_80px_rgba(0,0,0,0.45)] [transform:translateZ(0)]">
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-[50] flex justify-center pt-2">
+              <div className="h-5 w-28 rounded-full bg-[#132019]/85" />
+            </div>
+            {brochure}
+          </div>
+        </div>
+      ) : (
+        brochure
+      )}
+    </>
   );
 }

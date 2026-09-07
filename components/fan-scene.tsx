@@ -81,7 +81,9 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
       ['bearing', 510, 1.18, 1.82],
       ['shaft', 630, 1.38, 2.08],
     ] as const;
-    const assemblyParts = new Map(assemblyOrder.map(([name, explodedCenter, start, end]) => [name, { explodedCenter, start, end }]));
+    const assemblyParts = new Map<string, { explodedCenter: number; start: number; end: number }>(
+      assemblyOrder.map(([name, explodedCenter, start, end]) => [name, { explodedCenter, start, end }]),
+    );
 
     clone.traverse((object) => {
       if (!(object instanceof Mesh)) return;
@@ -758,9 +760,17 @@ function CameraRig({ activeSection }: CameraRigProps) {
     const pose = CAMERA_POSES[section];
     const position = pose.position.clone();
     const target = pose.target.clone();
+    // Dev mobile frame and real phones share a narrow canvas width.
     if (size.width < 640) {
-      position.z += 2.2;
-      target.y -= 0.42;
+      // Look slightly BELOW the product so it sits in the upper mid band
+      // (above the fixed copy strip, below the fixed header).
+      position.z += section === 'motor' ? 1.35 : 1.7;
+      position.y -= section === 'motor' ? 0.35 : 0.1;
+      target.y -= section === 'motor' ? 1.05 : 0.55;
+      if (section === 'controller') {
+        position.x = 0.1;
+        target.x = 0.1;
+      }
     }
     return { position, target };
   };
@@ -815,15 +825,21 @@ type FanSceneProps = {
   activeSection: SectionId;
   onMotorPhaseChange?: (phase: MotorSceneState) => void;
   onMotorHoverChange?: (hovered: boolean) => void;
+  mobileLayout?: boolean;
 };
 
-export default function FanScene({ activeSection, onMotorPhaseChange, onMotorHoverChange }: FanSceneProps) {
+export default function FanScene({
+  activeSection,
+  onMotorPhaseChange,
+  onMotorHoverChange,
+  mobileLayout = false,
+}: FanSceneProps) {
   const allowMotorPointer = activeSection === 'motor';
 
   return (
     <div className="relative h-full w-full">
       <Canvas
-        camera={{ fov: 38, position: [0, 0, 8.2] }}
+        camera={{ fov: mobileLayout ? 42 : 38, position: [0, 0, 8.2] }}
         style={{ pointerEvents: allowMotorPointer ? 'auto' : 'none' }}
       >
         <color attach="background" args={['#dfece5']} />

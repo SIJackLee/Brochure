@@ -190,3 +190,22 @@ body {
 .motor-dust-pad.is-washing {
   animation: motor-dust-wash 4.2s cubic-bezier(0.16, 0.84, 0.28, 1) both;
 }
+
+[data-mobile='true'] .motor-dust-pad {
+  inset: -0.55rem -0.65rem -0.7rem -0.55rem;
+  border-radius: 1.1rem;
+  opacity: 0.72;
+}
+
+.mobile-copy-panel {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: linear-gradient(
+    180deg,
+    rgba(238, 245, 240, 0.08) 0%,
+    rgba(238, 245, 240, 0.48) 22%,
+    rgba(238, 245, 240, 0.82) 100%
+  );
+  box-shadow: 0 10px 24px rgba(23, 36, 29, 0.1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
