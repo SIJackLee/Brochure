@@ -1,6 +1,6 @@
 'use client';
 
-import FanScene, { type SectionId } from '@/components/fan-scene';
+import FanScene, { type MotorSceneState, type SectionId } from '@/components/fan-scene';
 import { useEffect, useRef, useState, type WheelEvent } from 'react';
 
 const sections: Array<{
@@ -18,20 +18,14 @@ const sections: Array<{
   },
   {
     id: 'controller',
-    eyebrow: '02 / CONTROL UNIT',
+    eyebrow: '02 / CONTROL & CONNECT',
     title: 'Control at the source',
     description:
-      'SL-802B turns environmental conditions into a clear ventilation command at the point of operation.',
-  },
-  {
-    id: 'communication',
-    eyebrow: '03 / COMMUNICATION',
-    title: 'Connect the field',
-    description: 'Connect field devices to the cloud. Communication hardware will be added to this stage next.',
+      'SL-802B turns site conditions into ventilation commands, and the communication module links field devices to the cloud.',
   },
   {
     id: 'cloud',
-    eyebrow: '04 / CLOUD & DASHBOARD',
+    eyebrow: '03 / CLOUD & DASHBOARD',
     title: 'See what the system knows',
     description: 'Monitor. Analyze. Control. The dashboard brings field data into one clear operating view.',
   },
@@ -40,18 +34,50 @@ const sections: Array<{
 export default function Home() {
   const [activeSection, setActiveSection] = useState<SectionId>('motor');
   const [motorSequence, setMotorSequence] = useState(0);
+  const [dustWashing, setDustWashing] = useState(false);
   const navigationLockRef = useRef(false);
   const navigationUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
     motor: null,
     controller: null,
-    communication: null,
     cloud: null,
   });
+
+  const dustWashDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (activeSection !== 'motor') {
+      if (dustWashDelayRef.current) clearTimeout(dustWashDelayRef.current);
+      dustWashDelayRef.current = null;
+      setDustWashing(false);
+      if (typeof document !== 'undefined') document.body.style.cursor = '';
+    }
+  }, [activeSection]);
 
   useEffect(() => {
     if (activeSection === 'motor') setMotorSequence((sequence) => sequence + 1);
   }, [activeSection]);
+
+  useEffect(() => () => {
+    if (dustWashDelayRef.current) clearTimeout(dustWashDelayRef.current);
+  }, []);
+
+  const handleMotorPhaseChange = (phase: MotorSceneState) => {
+    if (phase === 'exploded') {
+      if (dustWashDelayRef.current) clearTimeout(dustWashDelayRef.current);
+      dustWashDelayRef.current = null;
+      setDustWashing(false);
+      return;
+    }
+    // Causality: 3D exhaust starts on spinning; dust wash follows after a short lead-in.
+    if (phase === 'spinning') {
+      if (dustWashDelayRef.current) clearTimeout(dustWashDelayRef.current);
+      dustWashDelayRef.current = setTimeout(() => {
+        setDustWashing(true);
+        dustWashDelayRef.current = null;
+      }, 480);
+    }
+  };
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -100,18 +126,32 @@ export default function Home() {
 
   return (
     <main onWheel={handleWheel} className="relative min-h-screen select-none overflow-x-hidden bg-[#dfece5] text-[#17241d]">
-      <div className="pointer-events-none fixed inset-0 z-0 h-[100svh]">
-        <FanScene activeSection={activeSection} />
+      <div
+        className={`fixed inset-0 z-0 h-[100svh] ${
+          activeSection === 'motor' ? 'pointer-events-auto' : 'pointer-events-none'
+        }`}
+      >
+        <FanScene
+          activeSection={activeSection}
+          onMotorPhaseChange={handleMotorPhaseChange}
+        />
       </div>
 
-      <div
-        className="pointer-events-none fixed inset-0 z-[1]"
-        style={{
-          background: activeSection === 'motor'
-            ? 'linear-gradient(90deg, rgba(238,245,240,0.84) 0%, rgba(238,245,240,0.70) 28%, rgba(238,245,240,0.12) 62%, rgba(238,245,240,0) 100%)'
-            : 'linear-gradient(90deg, rgba(238,245,240,0.98) 0%, rgba(238,245,240,0.82) 28%, rgba(238,245,240,0.12) 62%, rgba(238,245,240,0) 100%)',
-        }}
-      />
+      {activeSection === 'controller' ? (
+        // Fog only the copy column so the right empty stage stays crisp.
+        <div
+          className="pointer-events-none fixed inset-y-0 left-0 z-[1] w-[min(100%,36rem)] bg-[linear-gradient(90deg,rgba(238,245,240,0.95)_0%,rgba(238,245,240,0.55)_72%,rgba(238,245,240,0)_100%)] sm:w-[min(100%,40rem)] lg:w-[min(100%,44rem)]"
+        />
+      ) : (
+        <div
+          className="pointer-events-none fixed inset-0 z-[1]"
+          style={{
+            background: activeSection === 'motor'
+              ? 'linear-gradient(90deg, rgba(238,245,240,0.84) 0%, rgba(238,245,240,0.70) 28%, rgba(238,245,240,0.12) 62%, rgba(238,245,240,0) 100%)'
+              : 'linear-gradient(90deg, rgba(238,245,240,0.98) 0%, rgba(238,245,240,0.82) 28%, rgba(238,245,240,0.12) 62%, rgba(238,245,240,0) 100%)',
+          }}
+        />
+      )}
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[1] h-48 bg-[linear-gradient(0deg,rgba(238,245,240,0.9)_0%,rgba(238,245,240,0)_100%)]" />
 
       <header className="pointer-events-none fixed inset-x-0 top-0 z-30 flex items-center justify-between px-6 py-6 sm:px-10 lg:px-14">
@@ -124,7 +164,7 @@ export default function Home() {
         </span>
       </header>
 
-      <div className="relative z-10">
+      <div className="pointer-events-none relative z-10">
         {sections.map((section, index) => (
           <section
             key={section.id}
@@ -135,12 +175,17 @@ export default function Home() {
             }}
             className="relative flex min-h-[100svh] snap-start items-center px-6 py-28 sm:px-10 lg:px-14"
           >
-            <div className="max-w-2xl pb-14 pt-10 sm:pb-20 sm:pt-20">
+            <div className="pointer-events-auto max-w-2xl pb-14 pt-10 sm:pb-20 sm:pt-20">
               <div
                 key={section.id === 'motor' ? motorSequence : section.id}
                 className={section.id === 'motor' ? 'motor-copy-sequence' : undefined}
               >
-                {section.id === 'motor' && <div aria-hidden="true" className="motor-dust-pad" />}
+                {section.id === 'motor' && (
+                  <div
+                    aria-hidden="true"
+                    className={`motor-dust-pad${dustWashing ? ' is-washing' : ''}`}
+                  />
+                )}
                 <div className="relative z-[1]">
                   <p className="mb-5 text-sm font-semibold uppercase tracking-[0.24em] text-[#0f8d4b]">
                     {section.eyebrow}
@@ -157,13 +202,13 @@ export default function Home() {
               {section.id === 'motor' && (
                 <div className="mt-10 flex flex-wrap gap-3">
                   <a
-                    className="pointer-events-auto select-none rounded-full bg-[#0f8d4b] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(15,141,75,0.26)]"
+                    className="select-none rounded-full bg-[#0f8d4b] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(15,141,75,0.26)]"
                     href="https://autofankorea.com/"
                   >
                     Homepage
                   </a>
                   <a
-                    className="pointer-events-auto select-none rounded-full border border-[#9fbaaa] bg-[#eef5f0]/62 px-5 py-3 text-sm font-semibold text-[#254736] backdrop-blur-md"
+                    className="select-none rounded-full border border-[#9fbaaa] bg-[#eef5f0]/62 px-5 py-3 text-sm font-semibold text-[#254736] backdrop-blur-md"
                     href="https://smart.autofankorea.com/"
                   >
                     Dashboard
@@ -173,13 +218,13 @@ export default function Home() {
             </div>
 
             <span className="pointer-events-none absolute bottom-24 right-6 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#72907f] sm:right-10 lg:right-14">
-              0{index + 1} / 04
+              0{index + 1} / 0{sections.length}
             </span>
           </section>
         ))}
       </div>
 
-      <nav className="pointer-events-auto fixed inset-x-6 bottom-4 z-30 grid grid-cols-2 gap-2 sm:inset-x-10 sm:grid-cols-4 lg:inset-x-14">
+      <nav className="pointer-events-auto fixed inset-x-6 bottom-4 z-30 grid grid-cols-3 gap-2 sm:inset-x-10 lg:inset-x-14">
         {sections.map((section, index) => (
           <button
             key={section.id}
