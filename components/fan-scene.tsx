@@ -71,7 +71,7 @@ function Motor() {
   </group>;
 }
 
-type MotorSceneState = 'exploded' | 'assembling' | 'assembled' | 'spinning' | 'showcase';
+type MotorSceneState = 'exploded' | 'assembling' | 'assembled' | 'blade-assembly' | 'spinning' | 'showcase';
 
 type MotorAssemblyRef = {
   elapsed: number;
@@ -157,9 +157,9 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
       }
 
       if (name === 'shaft') {
-        // Keep the shaft aligned while ending it inside the blade hub.
+        // Preserve the GLB reference position; only the existing length trim remains.
         object.scale.y = 0.54;
-        object.position.y = -8;
+        object.position.y = 0;
       }
 
       object.material = material;
@@ -193,7 +193,7 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
   useFrame((_, delta) => {
     const { elapsed, state } = assemblyRef.current;
     model.animationParts.forEach((part) => {
-      const progress = state === 'showcase' || state === 'spinning' || state === 'assembled'
+      const progress = state === 'showcase' || state === 'spinning' || state === 'blade-assembly' || state === 'assembled'
         ? 1
         : Math.max(0, Math.min(1, (elapsed - part.start) / (part.end - part.start)));
       const eased = progress * progress * (3 - 2 * progress);
@@ -205,9 +205,9 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
     if (!active) return;
 
     const spinProgress = state === 'spinning'
-      ? Math.max(0, Math.min(1, (elapsed - 2.8) / 1.0))
+      ? Math.max(0, Math.min(1, (elapsed - 3.35) / 1.0))
       : state === 'showcase' ? 1 : 0;
-    const speed = 0.7 * (spinProgress * spinProgress * (3 - 2 * spinProgress));
+    const speed = 1.4 * (spinProgress * spinProgress * (3 - 2 * spinProgress));
     // The imported motor is rotated 90 degrees by its parent group, so invert
     // the local Y direction to match the fan rotor's world-space rotation.
     model.rotatingParts.rotation.y -= delta * speed;
@@ -272,6 +272,13 @@ function ImportedController() {
 
 function BladeRotor({ settings, active, assemblyRef }: { settings: BladeSettings; active: boolean; assemblyRef: MutableRefObject<MotorAssemblyRef> }) {
   const rotorRef = useRef<Group>(null);
+  const bladeMaterial = useMemo(() => new MeshStandardMaterial({
+    color: '#a9141b',
+    roughness: 0.5,
+    metalness: 0.04,
+    transparent: true,
+    opacity: 0,
+  }), []);
   const bladeGeometry = useMemo(() => {
     const {
       bladeLength,
@@ -318,15 +325,19 @@ function BladeRotor({ settings, active, assemblyRef }: { settings: BladeSettings
   useFrame((_, delta) => {
     if (!rotorRef.current) return;
     const { elapsed, state } = assemblyRef.current;
-    const assemblyProgress = state === 'showcase' || state === 'spinning' ? 1 : Math.max(0, Math.min(1, (elapsed - 1.8) / 0.75));
+    const assemblyProgress = state === 'showcase' || state === 'spinning'
+      ? 1
+      : Math.max(0, Math.min(1, (elapsed - 2.65) / 0.7));
     const easedAssembly = assemblyProgress * assemblyProgress * (3 - 2 * assemblyProgress);
     rotorRef.current.position.x = -0.72 * (1 - easedAssembly);
+    bladeMaterial.opacity = easedAssembly;
+    bladeMaterial.needsUpdate = true;
 
     if (!active) return;
     const spinProgress = state === 'spinning'
-      ? Math.max(0, Math.min(1, (elapsed - 2.8) / 1.0))
+      ? Math.max(0, Math.min(1, (elapsed - 3.35) / 1.0))
       : state === 'showcase' ? 1 : 0;
-    const speed = 0.7 * (spinProgress * spinProgress * (3 - 2 * spinProgress));
+    const speed = 1.4 * (spinProgress * spinProgress * (3 - 2 * spinProgress));
     rotorRef.current.rotation.x += delta * speed;
   });
 
@@ -349,9 +360,7 @@ function BladeRotor({ settings, active, assemblyRef }: { settings: BladeSettings
     {[0, 1, 2, 3, 4].map((i) => (
       <group key={i} rotation={[(Math.PI * 2 * i) / 5, 0, 0]}>
         <group rotation={[0, 0, sweep]}>
-          <mesh geometry={bladeGeometry} position={[0.08, settings.radialOffset, -settings.thickness / 2]} rotation={[0, pitch, 0]}>
-            <meshStandardMaterial color="#a9141b" roughness={0.5} metalness={0.04} />
-          </mesh>
+          <mesh geometry={bladeGeometry} material={bladeMaterial} position={[0.08, settings.radialOffset, -settings.thickness / 2]} rotation={[0, pitch, 0]} />
         </group>
       </group>
     ))}
@@ -380,7 +389,7 @@ function PartsStudy({ activeSection }: { activeSection: SectionId }) {
   useEffect(() => {
     if (activeSection === 'motor') {
       if (hasMotorIntroPlayedRef.current) {
-        motorAssemblyRef.current = { elapsed: 4, state: 'showcase', hasPlayed: true };
+        motorAssemblyRef.current = { elapsed: 5, state: 'showcase', hasPlayed: true };
       } else {
         introClockRef.current = 0;
         motorAssemblyRef.current = { elapsed: 0, state: 'exploded', hasPlayed: false };
@@ -389,26 +398,28 @@ function PartsStudy({ activeSection }: { activeSection: SectionId }) {
     }
 
     if (!hasMotorIntroPlayedRef.current) hasMotorIntroPlayedRef.current = true;
-    motorAssemblyRef.current = { elapsed: 4, state: 'showcase', hasPlayed: true };
+    motorAssemblyRef.current = { elapsed: 5, state: 'showcase', hasPlayed: true };
   }, [activeSection]);
 
   useFrame((_, delta) => {
     if (activeSection !== 'motor' || hasMotorIntroPlayedRef.current || !motorReadyRef.current) return;
 
     introClockRef.current += delta;
-    const elapsed = Math.min(introClockRef.current, 4);
+    const elapsed = Math.min(introClockRef.current, 5);
     const state: MotorSceneState = elapsed < 0.15
       ? 'exploded'
-      : elapsed < 2.55
+      : elapsed < 2.35
         ? 'assembling'
-        : elapsed < 2.8
+        : elapsed < 2.65
           ? 'assembled'
-          : elapsed < 3.8 ? 'spinning' : 'showcase';
+          : elapsed < 3.35
+            ? 'blade-assembly'
+            : elapsed < 4.35 ? 'spinning' : 'showcase';
     motorAssemblyRef.current = { elapsed, state, hasPlayed: false };
 
-    if (elapsed >= 4) {
+    if (elapsed >= 5) {
       hasMotorIntroPlayedRef.current = true;
-      motorAssemblyRef.current = { elapsed: 4, state: 'showcase', hasPlayed: true };
+      motorAssemblyRef.current = { elapsed: 5, state: 'showcase', hasPlayed: true };
     }
   });
 
