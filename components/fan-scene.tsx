@@ -97,16 +97,16 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
     const rotatingMeshes: Mesh[] = [];
     const animationParts: MotorPartEntry[] = [];
     const assemblyOrder = [
-      // Desired exploded centers are ordered along local Y. The parent rotates
-      // local Y into screen X, so larger Y values appear farther left.
-      ['housing_lower', -145, 0.15, 0.75],
-      ['pcb_cover_assy', -95, 0.35, 0.95],
-      ['extrusion_housing', -40, 0.55, 1.15],
-      ['st_assy', 15, 0.75, 1.35],
-      ['housing_upper', 80, 0.82, 1.42],
-      ['front_cover', 145, 1.0, 1.6],
-      ['bearing', 195, 1.22, 1.82],
-      ['shaft', 270, 1.35, 2.05],
+      // The lower housing stays at its assembled position and acts as the
+      // fixed anchor. The remaining parts begin to its screen-left, then
+      // travel along local Y into the final assembly position.
+      ['pcb_cover_assy', -30, 0.18, 0.82],
+      ['extrusion_housing', 25, 0.38, 1.02],
+      ['st_assy', 80, 0.58, 1.22],
+      ['housing_upper', 135, 0.78, 1.42],
+      ['front_cover', 190, 0.98, 1.62],
+      ['bearing', 240, 1.18, 1.82],
+      ['shaft', 300, 1.38, 2.08],
     ] as const;
     const assemblyParts = new Map(assemblyOrder.map(([name, explodedCenter, start, end]) => [name, { explodedCenter, start, end }]));
 
