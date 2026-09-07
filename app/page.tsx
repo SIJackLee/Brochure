@@ -70,7 +70,7 @@ export default function Home() {
   };
 
   return (
-    <main className="relative min-h-screen overflow-x-hidden bg-[#dfece5] text-[#17241d]">
+    <main className="relative min-h-screen select-none overflow-x-hidden bg-[#dfece5] text-[#17241d]">
       <div className="pointer-events-none fixed inset-0 z-0 h-[100svh]">
         <FanScene activeSection={activeSection} />
       </div>

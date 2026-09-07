@@ -1,6 +1,6 @@
 'use client';
 
-import { Environment, OrbitControls, useGLTF } from '@react-three/drei';
+import { Environment, useGLTF } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box3, DoubleSide, ExtrudeGeometry, Group, Mesh, MeshStandardMaterial, Shape, SRGBColorSpace, Vector3 } from 'three';
@@ -125,6 +125,12 @@ function ImportedMotor({ active }: { active: boolean }) {
           metalness: 0.74,
           roughness: 0.32,
         });
+      }
+
+      if (name === 'shaft') {
+        // Keep the shaft aligned while ending it inside the blade hub.
+        object.scale.y = 0.54;
+        object.position.y = -8;
       }
 
       object.material = material;
@@ -372,65 +378,72 @@ const CAMERA_POSES: Record<SectionId, { position: Vector3; target: Vector3 }> = 
 
 function CameraRig({ activeSection }: CameraRigProps) {
   const { camera, size } = useThree();
-  const controlsRef = useRef<any>(null);
   const elapsedRef = useRef(0);
+  const initializedRef = useRef(false);
+  const transitionRef = useRef(0);
+  const fromPosition = useMemo(() => new Vector3(), []);
+  const fromTarget = useMemo(() => new Vector3(), []);
+  const toPosition = useMemo(() => new Vector3(), []);
+  const toTarget = useMemo(() => new Vector3(), []);
+  const currentTarget = useMemo(() => new Vector3(), []);
   const nextPosition = useMemo(() => new Vector3(), []);
   const nextTarget = useMemo(() => new Vector3(), []);
 
+  const getResponsivePose = (section: SectionId) => {
+    const pose = CAMERA_POSES[section];
+    const position = pose.position.clone();
+    const target = pose.target.clone();
+    if (size.width < 640) {
+      position.z += 2.2;
+      target.y -= 0.42;
+    }
+    return { position, target };
+  };
+
   useEffect(() => {
     elapsedRef.current = 0;
-    const pose = CAMERA_POSES[activeSection];
-    const isMobile = size.width < 640;
-    const initialPosition = pose.position.clone();
-    const initialTarget = pose.target.clone();
-    if (isMobile) {
-      initialPosition.z += 2.2;
-      initialTarget.y -= 0.42;
+    const pose = getResponsivePose(activeSection);
+
+    if (!initializedRef.current) {
+      camera.position.copy(pose.position);
+      currentTarget.copy(pose.target);
+      initializedRef.current = true;
+    } else {
+      fromPosition.copy(camera.position);
+      fromTarget.copy(currentTarget);
+      transitionRef.current = 0.001;
     }
-    camera.position.copy(initialPosition);
-    camera.lookAt(initialTarget);
-    if (controlsRef.current) {
-      controlsRef.current.target.copy(initialTarget);
-      controlsRef.current.update();
-    }
-  }, [activeSection, camera, size.width]);
+
+    toPosition.copy(pose.position);
+    toTarget.copy(pose.target);
+  }, [activeSection, camera, size.width, currentTarget, fromPosition, fromTarget, toPosition, toTarget]);
 
   useFrame((_, delta) => {
     elapsedRef.current += delta;
-    const pose = CAMERA_POSES[activeSection];
-    const isMobile = size.width < 640;
-    nextPosition.copy(pose.position);
-    nextTarget.copy(pose.target);
-    if (isMobile) {
-      nextPosition.z += 2.2;
-      nextTarget.y -= 0.42;
+    if (transitionRef.current > 0 && transitionRef.current < 1) {
+      transitionRef.current = Math.min(1, transitionRef.current + delta / 1.1);
+      const eased = transitionRef.current * transitionRef.current * (3 - 2 * transitionRef.current);
+      nextPosition.lerpVectors(fromPosition, toPosition, eased);
+      nextTarget.lerpVectors(fromTarget, toTarget, eased);
+    } else {
+      nextPosition.copy(toPosition);
+      nextTarget.copy(toTarget);
+
+      if (activeSection === 'motor') {
+        nextPosition.x += Math.sin(elapsedRef.current * 0.16) * 0.16;
+        nextPosition.y += Math.cos(elapsedRef.current * 0.14) * 0.07;
+      } else if (activeSection === 'controller') {
+        nextPosition.x += Math.sin(elapsedRef.current * 0.12) * 0.08;
+        nextPosition.z += Math.sin(elapsedRef.current * 0.1) * 0.1;
+      }
     }
 
-    if (activeSection === 'motor') {
-      nextPosition.x += Math.sin(elapsedRef.current * 0.16) * 0.16;
-      nextPosition.y += Math.cos(elapsedRef.current * 0.14) * 0.07;
-    } else if (activeSection === 'controller') {
-      nextPosition.x += Math.sin(elapsedRef.current * 0.12) * 0.08;
-      nextPosition.z += Math.sin(elapsedRef.current * 0.1) * 0.1;
-    }
-
-    camera.position.lerp(nextPosition, Math.min(delta * 2.8, 1));
+    camera.position.copy(nextPosition);
+    currentTarget.copy(nextTarget);
     camera.lookAt(nextTarget);
-    if (controlsRef.current) {
-      controlsRef.current.target.copy(nextTarget);
-      controlsRef.current.update();
-    }
   });
 
-  return (
-    <OrbitControls
-      ref={controlsRef}
-      enablePan={false}
-      enableZoom={activeSection === 'motor' || activeSection === 'controller'}
-      maxDistance={9}
-      minDistance={5.2}
-    />
-  );
+  return null;
 }
 
 type FanSceneProps = {
@@ -440,7 +453,7 @@ type FanSceneProps = {
 export default function FanScene({ activeSection }: FanSceneProps) {
   return (
     <div className="relative h-full w-full">
-      <Canvas camera={{ fov: 38, position: [0, 0, 8.2] }}>
+      <Canvas camera={{ fov: 38, position: [0, 0, 8.2] }} style={{ pointerEvents: 'none' }}>
         <color attach="background" args={['#dfece5']} />
         <ambientLight intensity={0.72} />
         <directionalLight intensity={2.8} position={[4, 5, 5]} />
