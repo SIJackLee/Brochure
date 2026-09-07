@@ -157,9 +157,10 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
       }
 
       if (name === 'shaft') {
-        // Preserve the GLB reference position; only the existing length trim remains.
+        // SHAFT geometry is local-Y aligned. With the existing 0.54 length trim,
+        // y=40 places its front end at about y=112, the Blade Hub centerline.
         object.scale.y = 0.54;
-        object.position.y = 0;
+        object.position.y = 40;
       }
 
       object.material = material;
