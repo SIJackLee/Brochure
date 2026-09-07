@@ -44,7 +44,7 @@ const initialBladeSettings: BladeSettings = {
   sweepDegrees: 0,
 };
 
-export type ShotMode = 'cinematic' | 'chapters' | 'focus';
+export type SectionId = 'motor' | 'controller' | 'communication' | 'cloud';
 
 const coolingRibShape = new Shape();
 coolingRibShape.moveTo(0, -0.86);
@@ -71,7 +71,7 @@ function Motor() {
   </group>;
 }
 
-function ImportedMotor() {
+function ImportedMotor({ active }: { active: boolean }) {
   const { scene } = useGLTF('/models/BLDC_Motor_Web_v1.glb');
   const model = useMemo(() => {
     const clone = scene.clone(true);
@@ -142,7 +142,7 @@ function ImportedMotor() {
   useFrame((_, delta) => {
     // The imported motor is rotated 90 degrees by its parent group, so invert
     // the local Y direction to match the fan rotor's world-space rotation.
-    model.rotatingParts.rotation.y -= delta * 0.7;
+    if (active) model.rotatingParts.rotation.y -= delta * 0.7;
   });
 
   return <primitive object={model.clone} />;
@@ -202,7 +202,7 @@ function ImportedController() {
   return <primitive object={model} />;
 }
 
-function BladeRotor({ settings }: { settings: BladeSettings }) {
+function BladeRotor({ settings, active }: { settings: BladeSettings; active: boolean }) {
   const rotorRef = useRef<Group>(null);
   const bladeGeometry = useMemo(() => {
     const {
@@ -249,7 +249,7 @@ function BladeRotor({ settings }: { settings: BladeSettings }) {
 
   useFrame((_, delta) => {
     if (!rotorRef.current) return;
-    rotorRef.current.rotation.x += delta * 0.7;
+    if (active) rotorRef.current.rotation.x += delta * 0.7;
   });
 
   const pitch = settings.pitchDegrees * (Math.PI / 180);
@@ -288,7 +288,7 @@ function SafetyGrille() {
   return <group>{[0.48, 0.74, 1, 1.24].map((r) => <mesh key={r}><torusGeometry args={[r, 0.025, 10, 64]} /><meshStandardMaterial color={black} roughness={0.28} metalness={0.62} /></mesh>)}{Array.from({ length: 12 }, (_, i) => <mesh key={i} rotation={[0, 0, (Math.PI * i) / 12]}><boxGeometry args={[0.026, 2.52, 0.026]} /><meshStandardMaterial color={black} roughness={0.28} metalness={0.62} /></mesh>)}</group>;
 }
 
-function PartsStudy() {
+function PartsStudy({ activeSection }: { activeSection: SectionId }) {
   const studyRef = useRef<Group>(null);
   const motorBodyRef = useRef<Group>(null);
   const controllerRef = useRef<Group>(null);
@@ -316,7 +316,7 @@ function PartsStudy() {
     const motorCenter = motorBox.getCenter(new Vector3());
     // Keep the controller as a separate product block. The gap is derived from
     // the measured motor/controller bounds so this remains stable with GLB scale.
-    const horizontalGap = motorBodySize.x * 0.24;
+    const horizontalGap = motorBodySize.x * 1.2;
     const verticalGap = motorBodySize.y * 0.32;
     const depthOffset = controllerSize.z * 0.1;
     const controllerWorldCenter = new Vector3(
@@ -336,83 +336,89 @@ function PartsStudy() {
     });
   }, [controllerScale]);
 
-  return <group ref={studyRef} position={[0.55, 0.05, 0]} rotation={[0.06, -0.3, 0]} scale={0.72}>
-    <group ref={motorBodyRef} position={[0.25, 0.15, 0]} rotation={[0, 0, Math.PI / 2]} scale={0.008}><ImportedMotor /></group>
-    <group position={[-0.76, 0.15, 0]} scale={0.42}><BladeRotor settings={initialBladeSettings} /></group>
-    <group ref={controllerRef} position={controllerPosition} rotation={[0.02, -0.12, 0]} scale={controllerScale}><ImportedController /></group>
+  return <group ref={studyRef} name="ProductStages" position={[0.55, 0.05, 0]} rotation={[0.06, -0.3, 0]} scale={0.72}>
+    <group name="MotorStage" position={[0.25, 0.15, 0]}>
+      <group ref={motorBodyRef} rotation={[0, 0, Math.PI / 2]} scale={0.008}><ImportedMotor active={activeSection === 'motor'} /></group>
+      <group position={[-0.76, 0, 0]} scale={0.42}><BladeRotor active={activeSection === 'motor'} settings={initialBladeSettings} /></group>
+    </group>
+    <group name="ControllerStage" ref={controllerRef} position={controllerPosition} rotation={[0.02, -0.12, 0]} scale={controllerScale}><ImportedController /></group>
+    <group name="CommunicationStage" />
+    <group name="CloudStage" />
   </group>;
 }
 
 type CameraRigProps = {
-  mode: ShotMode;
-  chapterProgress: number;
+  activeSection: SectionId;
 };
 
-function CameraRig({ mode, chapterProgress }: CameraRigProps) {
-  const { camera } = useThree();
+const CAMERA_POSES: Record<SectionId, { position: Vector3; target: Vector3 }> = {
+  motor: {
+    position: new Vector3(-0.15, 0.18, 9.2),
+    target: new Vector3(-0.15, 0.12, 0),
+  },
+  controller: {
+    position: new Vector3(4.15, -1.62, 6.8),
+    target: new Vector3(4.07, -1.58, 0),
+  },
+  communication: {
+    position: new Vector3(-7, 0, 8.8),
+    target: new Vector3(-7, 0, 0),
+  },
+  cloud: {
+    position: new Vector3(-7, 0, 8.8),
+    target: new Vector3(-7, 0, 0),
+  },
+};
+
+function CameraRig({ activeSection }: CameraRigProps) {
+  const { camera, size } = useThree();
   const controlsRef = useRef<any>(null);
   const elapsedRef = useRef(0);
-  const motorPosition = useMemo(() => new Vector3(-0.15, 0.18, 9.2), []);
-  const controllerPosition = useMemo(() => new Vector3(1.35, -1.62, 8.65), []);
-  const motorTarget = useMemo(() => new Vector3(-0.15, 0.12, 0), []);
-  const controllerTarget = useMemo(() => new Vector3(1.28, -1.58, 0), []);
   const nextPosition = useMemo(() => new Vector3(), []);
   const nextTarget = useMemo(() => new Vector3(), []);
 
   useEffect(() => {
     elapsedRef.current = 0;
-    const initialPosition = mode === 'focus' ? motorPosition : new Vector3(0, 0, 8.2);
-    const initialTarget = mode === 'focus' ? motorTarget : new Vector3(0, 0, 0);
+    const pose = CAMERA_POSES[activeSection];
+    const isMobile = size.width < 640;
+    const initialPosition = pose.position.clone();
+    const initialTarget = pose.target.clone();
+    if (isMobile) {
+      initialPosition.z += 2.2;
+      initialTarget.y -= 0.42;
+    }
     camera.position.copy(initialPosition);
     camera.lookAt(initialTarget);
     if (controlsRef.current) {
       controlsRef.current.target.copy(initialTarget);
       controlsRef.current.update();
     }
-  }, [camera, mode, motorPosition, motorTarget]);
+  }, [activeSection, camera, size.width]);
 
   useFrame((_, delta) => {
     elapsedRef.current += delta;
-
-    if (mode === 'cinematic') {
-      const cycle = elapsedRef.current % 18;
-      const phase = cycle < 4 ? 0 : cycle < 8 ? (cycle - 4) / 4 : cycle < 14 ? 1 : 1 - (cycle - 14) / 4;
-      const eased = phase * phase * (3 - 2 * phase);
-      nextPosition.lerpVectors(motorPosition, controllerPosition, eased);
-      nextTarget.lerpVectors(motorTarget, controllerTarget, eased);
-      nextPosition.x += Math.sin(elapsedRef.current * 0.32) * 0.22;
-      nextPosition.y += Math.cos(elapsedRef.current * 0.28) * 0.1;
-      camera.position.lerp(nextPosition, Math.min(delta * 3.4, 1));
-      camera.lookAt(nextTarget);
-      if (controlsRef.current) {
-        controlsRef.current.target.copy(nextTarget);
-        controlsRef.current.update();
-      }
+    const pose = CAMERA_POSES[activeSection];
+    const isMobile = size.width < 640;
+    nextPosition.copy(pose.position);
+    nextTarget.copy(pose.target);
+    if (isMobile) {
+      nextPosition.z += 2.2;
+      nextTarget.y -= 0.42;
     }
 
-    if (mode === 'chapters') {
-      const eased = chapterProgress * chapterProgress * (3 - 2 * chapterProgress);
-      nextPosition.lerpVectors(motorPosition, controllerPosition, eased);
-      nextTarget.lerpVectors(motorTarget, controllerTarget, eased);
-      camera.position.lerp(nextPosition, Math.min(delta * 5, 1));
-      camera.lookAt(nextTarget);
-      if (controlsRef.current) {
-        controlsRef.current.target.copy(nextTarget);
-        controlsRef.current.update();
-      }
+    if (activeSection === 'motor') {
+      nextPosition.x += Math.sin(elapsedRef.current * 0.16) * 0.16;
+      nextPosition.y += Math.cos(elapsedRef.current * 0.14) * 0.07;
+    } else if (activeSection === 'controller') {
+      nextPosition.x += Math.sin(elapsedRef.current * 0.12) * 0.08;
+      nextPosition.z += Math.sin(elapsedRef.current * 0.1) * 0.1;
     }
 
-    if (mode === 'focus' && elapsedRef.current < 4) {
-      const phase = Math.min(elapsedRef.current / 4, 1);
-      const eased = phase * phase * (3 - 2 * phase);
-      nextPosition.lerpVectors(motorPosition, controllerPosition, eased);
-      nextTarget.lerpVectors(motorTarget, controllerTarget, eased);
-      camera.position.lerp(nextPosition, Math.min(delta * 4, 1));
-      camera.lookAt(nextTarget);
-      if (controlsRef.current) {
-        controlsRef.current.target.copy(nextTarget);
-        controlsRef.current.update();
-      }
+    camera.position.lerp(nextPosition, Math.min(delta * 2.8, 1));
+    camera.lookAt(nextTarget);
+    if (controlsRef.current) {
+      controlsRef.current.target.copy(nextTarget);
+      controlsRef.current.update();
     }
   });
 
@@ -420,7 +426,7 @@ function CameraRig({ mode, chapterProgress }: CameraRigProps) {
     <OrbitControls
       ref={controlsRef}
       enablePan={false}
-      enableZoom={mode !== 'chapters'}
+      enableZoom={activeSection === 'motor' || activeSection === 'controller'}
       maxDistance={9}
       minDistance={5.2}
     />
@@ -428,22 +434,20 @@ function CameraRig({ mode, chapterProgress }: CameraRigProps) {
 }
 
 type FanSceneProps = {
-  mode: ShotMode;
-  chapterProgress: number;
-  onChapterWheel: (deltaY: number) => void;
+  activeSection: SectionId;
 };
 
-export default function FanScene({ mode, chapterProgress, onChapterWheel }: FanSceneProps) {
+export default function FanScene({ activeSection }: FanSceneProps) {
   return (
-    <div className="relative h-full w-full" onWheel={(event) => mode === 'chapters' && onChapterWheel(event.deltaY)}>
+    <div className="relative h-full w-full">
       <Canvas camera={{ fov: 38, position: [0, 0, 8.2] }}>
         <color attach="background" args={['#dfece5']} />
         <ambientLight intensity={0.72} />
         <directionalLight intensity={2.8} position={[4, 5, 5]} />
         <directionalLight intensity={1.1} position={[-4, 2, 2]} color="#d9eee6" />
         <Environment preset="warehouse" />
-        <PartsStudy />
-        <CameraRig mode={mode} chapterProgress={chapterProgress} />
+        <PartsStudy activeSection={activeSection} />
+        <CameraRig activeSection={activeSection} />
       </Canvas>
     </div>
   );

@@ -1,118 +1,159 @@
 'use client';
 
-import FanScene, { type ShotMode } from '@/components/fan-scene';
-import { useState } from 'react';
+import FanScene, { type SectionId } from '@/components/fan-scene';
+import { useEffect, useRef, useState } from 'react';
 
-const flowSteps = [
-  'Sense climate',
-  'SL-802B control',
-  'BLDC ventilation',
-  'Cloud sync',
-  'Dashboard insight',
+const sections: Array<{
+  id: SectionId;
+  eyebrow: string;
+  title: string;
+  description: string;
+}> = [
+  {
+    id: 'motor',
+    eyebrow: '01 / DRIVE UNIT',
+    title: 'Control the Climate',
+    description:
+      'A BLDC motor and axial fan built to move air through windowless pig houses with steady, precise control.',
+  },
+  {
+    id: 'controller',
+    eyebrow: '02 / CONTROL UNIT',
+    title: 'Control at the source',
+    description:
+      'SL-802B turns environmental conditions into a clear ventilation command at the point of operation.',
+  },
+  {
+    id: 'communication',
+    eyebrow: '03 / COMMUNICATION',
+    title: 'Connect the field',
+    description: 'Connect field devices to the cloud. Communication hardware will be added to this stage next.',
+  },
+  {
+    id: 'cloud',
+    eyebrow: '04 / CLOUD & DASHBOARD',
+    title: 'See what the system knows',
+    description: 'Monitor. Analyze. Control. The dashboard brings field data into one clear operating view.',
+  },
 ];
 
 export default function Home() {
-  const [shotMode, setShotMode] = useState<ShotMode>('cinematic');
-  const [chapterProgress, setChapterProgress] = useState(0);
+  const [activeSection, setActiveSection] = useState<SectionId>('motor');
+  const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
+    motor: null,
+    controller: null,
+    communication: null,
+    cloud: null,
+  });
 
-  const selectShot = (mode: ShotMode) => {
-    setShotMode(mode);
-    if (mode === 'chapters') setChapterProgress(0);
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        const id = visible?.target.getAttribute('data-section') as SectionId | null;
+        if (id) setActiveSection(id);
+      },
+      { threshold: [0.45, 0.65, 0.85], rootMargin: '-8% 0px -8% 0px' },
+    );
+
+    Object.values(sectionRefs.current).forEach((section) => {
+      if (section) observer.observe(section);
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  const scrollToSection = (id: SectionId) => {
+    sectionRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#dfece5] text-[#17241d]">
-      <div className="absolute inset-0">
-        <FanScene
-          mode={shotMode}
-          chapterProgress={chapterProgress}
-          onChapterWheel={(deltaY) =>
-            setChapterProgress((progress) =>
-              Math.min(1, Math.max(0, progress + deltaY * 0.0012)),
-            )
-          }
-        />
+    <main className="relative min-h-screen overflow-x-hidden bg-[#dfece5] text-[#17241d]">
+      <div className="pointer-events-none fixed inset-0 z-0 h-[100svh]">
+        <FanScene activeSection={activeSection} />
       </div>
 
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(238,245,240,0.96)_0%,rgba(238,245,240,0.78)_31%,rgba(238,245,240,0.08)_58%,rgba(238,245,240,0)_100%)]" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-[linear-gradient(0deg,rgba(238,245,240,0.9)_0%,rgba(238,245,240,0)_100%)]" />
+      <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(90deg,rgba(238,245,240,0.98)_0%,rgba(238,245,240,0.82)_28%,rgba(238,245,240,0.12)_62%,rgba(238,245,240,0)_100%)]" />
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[1] h-48 bg-[linear-gradient(0deg,rgba(238,245,240,0.9)_0%,rgba(238,245,240,0)_100%)]" />
 
-      <section className="pointer-events-none relative z-10 flex min-h-screen select-none flex-col justify-between px-6 py-7 sm:px-10 lg:px-14">
-        <header className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="grid size-9 place-items-center rounded-md bg-[#0f8d4b] text-sm font-black text-white">
-              SI
-            </span>
-            <span className="text-sm font-semibold tracking-[0.18em] text-[#0f8d4b]">
-              SUNG-IL
-            </span>
-          </div>
-          <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-[#b8cec1] bg-[#eef5f0]/70 p-1.5 shadow-[0_10px_28px_rgba(41,83,62,0.08)] backdrop-blur-md">
-            {([
-              ['cinematic', 'Cinematic'],
-              ['chapters', 'Scroll chapters'],
-              ['focus', 'Interactive focus'],
-            ] as const).map(([mode, label], index) => (
-              <button
-                key={mode}
-                type="button"
-                aria-pressed={shotMode === mode}
-                className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors ${
-                  shotMode === mode
-                    ? 'bg-[#0f8d4b] text-white shadow-sm'
-                    : 'text-[#4d6b5b] hover:bg-[#dcebe1]'
-                }`}
-                onClick={() => selectShot(mode)}
-              >
-                <span className="mr-1 text-[10px] opacity-70">0{index + 1}</span>
-                {label}
-              </button>
-            ))}
-          </div>
-        </header>
-
-        <div className="max-w-2xl pb-12 pt-24 sm:pt-28 lg:pb-20">
-          <p className="mb-5 text-sm font-semibold uppercase tracking-[0.24em] text-[#0f8d4b]">
-            QR brochure concept
-          </p>
-          <h1 className="max-w-xl text-5xl font-semibold leading-[0.95] text-[#132019] sm:text-7xl lg:text-8xl">
-            Control the Climate
-          </h1>
-          <p className="mt-7 max-w-xl text-lg leading-8 text-[#486457] sm:text-xl sm:leading-9">
-            Sense the environment, adjust ventilation, and connect field data
-            from windowless pig houses to the cloud dashboard.
-          </p>
-
-          <div className="mt-10 flex flex-wrap gap-3">
-            <a
-              className="pointer-events-auto select-none rounded-full bg-[#0f8d4b] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(15,141,75,0.26)]"
-              href="https://autofankorea.com/"
-            >
-              Homepage
-            </a>
-            <a
-              className="pointer-events-auto select-none rounded-full border border-[#9fbaaa] bg-[#eef5f0]/62 px-5 py-3 text-sm font-semibold text-[#254736] backdrop-blur-md"
-              href="https://smart.autofankorea.com/"
-            >
-              Dashboard
-            </a>
-          </div>
+      <header className="pointer-events-none fixed inset-x-0 top-0 z-30 flex items-center justify-between px-6 py-6 sm:px-10 lg:px-14">
+        <div className="flex items-center gap-3">
+          <span className="grid size-9 place-items-center rounded-md bg-[#0f8d4b] text-sm font-black text-white">SI</span>
+          <span className="text-sm font-semibold tracking-[0.18em] text-[#0f8d4b]">SUNG-IL</span>
         </div>
+        <span className="rounded-full border border-[#b8cec1] bg-[#eef5f0]/70 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[#4d6b5b] backdrop-blur-md">
+          {sections.find((section) => section.id === activeSection)?.eyebrow}
+        </span>
+      </header>
 
-        <ol className="grid gap-2 text-sm text-[#516f61] sm:grid-cols-5">
-          {flowSteps.map((step, index) => (
-            <li
-              className="flex min-h-12 items-center gap-3 rounded-lg border border-[#c9dbd0] bg-[#eef5f0]/58 px-3 py-2 backdrop-blur-md"
-              key={step}
-            >
-              <span className="text-xs font-bold text-[#0f8d4b]">
-                {String(index + 1).padStart(2, '0')}
-              </span>
-              <span>{step}</span>
-            </li>
-          ))}
-        </ol>
-      </section>
+      <div className="relative z-10">
+        {sections.map((section, index) => (
+          <section
+            key={section.id}
+            id={section.id}
+            data-section={section.id}
+            ref={(element) => {
+              sectionRefs.current[section.id] = element;
+            }}
+            className="relative flex min-h-[100svh] snap-start items-center px-6 py-28 sm:px-10 lg:px-14"
+          >
+            <div className="max-w-2xl pb-14 pt-10 sm:pb-20 sm:pt-20">
+              <p className="mb-5 text-sm font-semibold uppercase tracking-[0.24em] text-[#0f8d4b]">
+                {section.eyebrow}
+              </p>
+              <h1 className="max-w-xl text-5xl font-semibold leading-[0.95] text-[#132019] sm:text-7xl lg:text-8xl">
+                {section.title}
+              </h1>
+              <p className="mt-7 max-w-xl text-lg leading-8 text-[#486457] sm:text-xl sm:leading-9">
+                {section.description}
+              </p>
+
+              {section.id === 'motor' && (
+                <div className="mt-10 flex flex-wrap gap-3">
+                  <a
+                    className="pointer-events-auto select-none rounded-full bg-[#0f8d4b] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(15,141,75,0.26)]"
+                    href="https://autofankorea.com/"
+                  >
+                    Homepage
+                  </a>
+                  <a
+                    className="pointer-events-auto select-none rounded-full border border-[#9fbaaa] bg-[#eef5f0]/62 px-5 py-3 text-sm font-semibold text-[#254736] backdrop-blur-md"
+                    href="https://smart.autofankorea.com/"
+                  >
+                    Dashboard
+                  </a>
+                </div>
+              )}
+            </div>
+
+            <span className="pointer-events-none absolute bottom-24 right-6 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#72907f] sm:right-10 lg:right-14">
+              0{index + 1} / 04
+            </span>
+          </section>
+        ))}
+      </div>
+
+      <nav className="pointer-events-auto fixed inset-x-6 bottom-4 z-30 grid grid-cols-2 gap-2 sm:inset-x-10 sm:grid-cols-4 lg:inset-x-14">
+        {sections.map((section, index) => (
+          <button
+            key={section.id}
+            type="button"
+            aria-label={`Go to ${section.title}`}
+            aria-current={activeSection === section.id ? 'step' : undefined}
+            className={`flex min-h-12 items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm backdrop-blur-md transition-colors ${
+              activeSection === section.id
+                ? 'border-[#0f8d4b] bg-[#eef5f0]/86 text-[#244f38]'
+                : 'border-[#c9dbd0] bg-[#eef5f0]/58 text-[#516f61] hover:bg-[#eef5f0]/86'
+            }`}
+            onClick={() => scrollToSection(section.id)}
+          >
+            <span className="text-xs font-bold text-[#0f8d4b]">{String(index + 1).padStart(2, '0')}</span>
+            <span className="truncate">{section.title}</span>
+          </button>
+        ))}
+      </nav>
     </main>
   );
 }
