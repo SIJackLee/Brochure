@@ -1,7 +1,7 @@
 'use client';
 
 import FanScene, { type SectionId } from '@/components/fan-scene';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type WheelEvent } from 'react';
 
 const sections: Array<{
   id: SectionId;
@@ -39,6 +39,8 @@ const sections: Array<{
 
 export default function Home() {
   const [activeSection, setActiveSection] = useState<SectionId>('motor');
+  const navigationLockRef = useRef(false);
+  const navigationUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
     motor: null,
     controller: null,
@@ -49,6 +51,7 @@ export default function Home() {
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
+        if (navigationLockRef.current) return;
         const visible = entries
           .filter((entry) => entry.isIntersecting)
           .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
@@ -62,15 +65,36 @@ export default function Home() {
       if (section) observer.observe(section);
     });
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (navigationUnlockTimerRef.current) clearTimeout(navigationUnlockTimerRef.current);
+    };
   }, []);
 
   const scrollToSection = (id: SectionId) => {
-    sectionRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const target = sectionRefs.current[id];
+    if (!target) return;
+
+    navigationLockRef.current = true;
+    setActiveSection(id);
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (navigationUnlockTimerRef.current) clearTimeout(navigationUnlockTimerRef.current);
+    navigationUnlockTimerRef.current = setTimeout(() => {
+      navigationLockRef.current = false;
+    }, 1200);
+  };
+
+  const handleWheel = (event: WheelEvent<HTMLElement>) => {
+    if (Math.abs(event.deltaY) < 12 || navigationLockRef.current) return;
+
+    event.preventDefault();
+    const currentIndex = sections.findIndex((section) => section.id === activeSection);
+    const nextIndex = Math.max(0, Math.min(sections.length - 1, currentIndex + (event.deltaY > 0 ? 1 : -1)));
+    if (nextIndex !== currentIndex) scrollToSection(sections[nextIndex].id);
   };
 
   return (
-    <main className="relative min-h-screen select-none overflow-x-hidden bg-[#dfece5] text-[#17241d]">
+    <main onWheel={handleWheel} className="relative min-h-screen select-none overflow-x-hidden bg-[#dfece5] text-[#17241d]">
       <div className="pointer-events-none fixed inset-0 z-0 h-[100svh]">
         <FanScene activeSection={activeSection} />
       </div>
