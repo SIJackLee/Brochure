@@ -147,9 +147,58 @@ function ImportedMotor() {
 }
 
 useGLTF.preload('/models/BLDC_Motor_Web_v1.glb');
+useGLTF.preload('/models/SL_802B_Controller_Web_v1.glb');
 
 function Shaft() {
   return <group rotation={[Math.PI / 2, 0, 0]}><mesh><cylinderGeometry args={[0.12, 0.12, 1.55, 32]} /><meshStandardMaterial color="#bdc5c1" roughness={0.22} metalness={0.85} /></mesh><mesh position={[0, -0.55, 0]}><cylinderGeometry args={[0.22, 0.22, 0.22, 32]} /><meshStandardMaterial color="#646d69" roughness={0.28} metalness={0.75} /></mesh><mesh position={[0, 0.42, 0]}><cylinderGeometry args={[0.17, 0.17, 0.28, 32]} /><meshStandardMaterial color="#8f9994" roughness={0.25} metalness={0.8} /></mesh><mesh position={[0, 0.78, 0]}><cylinderGeometry args={[0.11, 0.11, 0.42, 32]} /><meshStandardMaterial color="#d1d7d3" roughness={0.18} metalness={0.9} /></mesh></group>;
+}
+
+function ImportedController() {
+  const { scene } = useGLTF('/models/SL_802B_Controller_Web_v1.glb');
+  const model = useMemo(() => {
+    const clone = scene.clone(true);
+    clone.traverse((object) => {
+      if (!(object instanceof Mesh)) return;
+
+      const name = object.name.toLowerCase();
+      let material = new MeshStandardMaterial({
+        color: '#1f514a',
+        metalness: 0.22,
+        roughness: 0.4,
+      });
+
+      if (name.includes('display')) {
+        material = new MeshStandardMaterial({
+          color: '#142b2b',
+          metalness: 0.18,
+          roughness: 0.24,
+        });
+      } else if (name.includes('decal')) {
+        material = new MeshStandardMaterial({
+          color: '#68b4a2',
+          metalness: 0.05,
+          roughness: 0.5,
+        });
+      } else if (name.includes('switch')) {
+        material = new MeshStandardMaterial({
+          color: '#101614',
+          metalness: 0.35,
+          roughness: 0.3,
+        });
+      } else if (name.includes('screw')) {
+        material = new MeshStandardMaterial({
+          color: '#aeb9b5',
+          metalness: 0.9,
+          roughness: 0.18,
+        });
+      }
+
+      object.material = material;
+    });
+    return clone;
+  }, [scene]);
+
+  return <primitive object={model} />;
 }
 
 function BladeRotor({ settings }: { settings: BladeSettings }) {
@@ -242,13 +291,14 @@ function PartsStudy() {
   return <group position={[0.55, 0.05, 0]} rotation={[0.06, -0.3, 0]} scale={0.72}>
     <group position={[0.25, 0.15, 0]} rotation={[0, 0, Math.PI / 2]} scale={0.008}><ImportedMotor /></group>
     <group position={[-0.76, 0.15, 0]} scale={0.42}><BladeRotor settings={initialBladeSettings} /></group>
+    <group position={[0.28, -0.95, 0.18]} rotation={[0.02, -0.12, 0]} scale={3.1}><ImportedController /></group>
   </group>;
 }
 
 export default function FanScene() {
   return (
     <div className="relative h-full w-full">
-      <Canvas camera={{ fov: 36, position: [0, 0, 7.4] }}>
+      <Canvas camera={{ fov: 38, position: [0, 0, 8.2] }}>
         <color attach="background" args={['#dfece5']} />
         <ambientLight intensity={0.72} />
         <directionalLight intensity={2.8} position={[4, 5, 5]} />
