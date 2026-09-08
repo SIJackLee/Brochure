@@ -7,9 +7,9 @@ import {
   CONTROLLER_TYPE_START_MS,
   CONTROLLER_TYPE_STEP_MS,
 } from '@/lib/controller-boot';
-import { MOTOR_DUST_DELAY_SHOWCASE_MS, MOTOR_DUST_DELAY_SPIN_MS } from '@/lib/intro-timing';
+import { CLOUD_CHART_AT_S, MOTOR_DUST_DELAY_SHOWCASE_MS, MOTOR_DUST_DELAY_SPIN_MS } from '@/lib/intro-timing';
 import Image from 'next/image';
-import { useEffect, useRef, useState, type WheelEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type WheelEvent } from 'react';
 
 const sections: Array<{
   id: SectionId;
@@ -342,7 +342,11 @@ export default function Home() {
                 />
               ) : null}
               {section.id === 'cloud' ? (
-                <div className="copy-pad-chart" aria-hidden="true">
+                <div
+                  className={`copy-pad-chart${activeSection === 'cloud' ? ' is-live' : ''}`}
+                  style={{ '--cloud-chart-delay': `${CLOUD_CHART_AT_S}s` } as CSSProperties}
+                  aria-hidden="true"
+                >
                   <span className="copy-pad-chart-bar" style={{ height: '38%' }} />
                   <span className="copy-pad-chart-bar" style={{ height: '22%' }} />
                   <span className="copy-pad-chart-bar" style={{ height: '54%' }} />
@@ -353,6 +357,8 @@ export default function Home() {
                   <span className="copy-pad-chart-bar" style={{ height: '36%' }} />
                   <span className="copy-pad-chart-bar" style={{ height: '80%' }} />
                   <span className="copy-pad-chart-bar" style={{ height: '48%' }} />
+                  <span className="copy-pad-chart-bar" style={{ height: '66%' }} />
+                  <span className="copy-pad-chart-bar" style={{ height: '29%' }} />
                 </div>
               ) : null}
               <div
@@ -414,7 +420,11 @@ export default function Home() {
                     />
                   ) : null}
                   {section.id === 'cloud' ? (
-                    <div className="copy-aside copy-chart-aside" aria-hidden="true">
+                    <div
+                      className={`copy-aside copy-chart-aside${activeSection === 'cloud' ? ' is-live' : ''}`}
+                      style={{ '--cloud-chart-delay': `${CLOUD_CHART_AT_S}s` } as CSSProperties}
+                      aria-hidden="true"
+                    >
                       <span className="copy-chart-bar" style={{ height: '42%' }} />
                       <span className="copy-chart-bar" style={{ height: '28%' }} />
                       <span className="copy-chart-bar" style={{ height: '68%' }} />

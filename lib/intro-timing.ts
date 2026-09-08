@@ -42,3 +42,6 @@ export const CLOUD_INTRO_S = SECTION_INTRO_S;
 export const CLOUD_PANEL_AT_S = [0.55, 1.25, 1.95] as const;
 export const CLOUD_PANEL_FADE_S = 0.42;
 export const CLOUD_FOCUS_LERP = 8;
+/** Copy chart waits until the three cards have seated. */
+export const CLOUD_CHART_AT_S = CLOUD_PANEL_AT_S[2] + CLOUD_PANEL_FADE_S + 0.08;
+export const CLOUD_CHART_ENTER_S = 0.62;

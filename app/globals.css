@@ -276,15 +276,41 @@ body {
   min-height: 4.2rem;
 }
 
-[data-mobile='false'] .copy-title-pair {
-  grid-template-columns: max-content minmax(5rem, 1fr);
-  column-gap: 0.85rem;
+[data-mobile='false'] .copy-title-pair,
+[data-mobile='true'] .copy-title-pair {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 0;
 }
 
 [data-mobile='false'] .copy-title-pair .copy-title {
   width: max-content;
   max-width: none;
   white-space: nowrap;
+}
+
+.copy-title-pair .copy-title,
+.copy-title-pair .copy-body {
+  position: relative;
+  z-index: 1;
+}
+
+.copy-title-pair .copy-pulse-aside {
+  position: absolute;
+  z-index: 0;
+  grid-column: auto;
+  grid-row: auto;
+  top: 2.1rem;
+  right: -0.55rem;
+  bottom: -0.1rem;
+  width: min(92%, 36rem);
+  border-radius: 0.85rem;
+}
+
+[data-mobile='true'] .copy-title-pair .copy-pulse-aside {
+  top: 1.25rem;
+  right: -0.15rem;
+  width: min(90%, 16rem);
 }
 
 .copy-pulse-aside {
@@ -319,6 +345,11 @@ body {
   align-items: flex-end;
   gap: 0.22rem;
   padding: 0.15rem 0.1rem 0.2rem;
+  opacity: 0;
+}
+
+.copy-chart-aside.is-live {
+  animation: copy-chart-pad-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) var(--cloud-chart-delay, 2.45s) both;
 }
 
 .copy-chart-bar {
@@ -326,15 +357,23 @@ body {
   flex: 1;
   min-height: 0.4rem;
   border-radius: 0.12rem 0.12rem 0 0;
+  transform: scaleY(0.08);
+  transform-origin: bottom center;
   background: linear-gradient(180deg, rgba(15, 141, 75, 0.88), rgba(15, 141, 75, 0.28));
-  animation: copy-analysis-rise 3.2s ease-in-out infinite;
 }
 
-.copy-chart-bar:nth-child(2) { animation-delay: 0.12s; }
-.copy-chart-bar:nth-child(3) { animation-delay: 0.24s; }
-.copy-chart-bar:nth-child(4) { animation-delay: 0.08s; }
-.copy-chart-bar:nth-child(5) { animation-delay: 0.2s; }
-.copy-chart-bar:nth-child(6) { animation-delay: 0.16s; }
+.copy-chart-aside.is-live .copy-chart-bar {
+  animation:
+    copy-chart-bar-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) var(--bar-in-delay, 2.5s) both,
+    copy-analysis-wave 1.35s ease-in-out var(--bar-wave-delay, 3.05s) infinite;
+}
+
+.copy-chart-bar:nth-child(1) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.02s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.52s); }
+.copy-chart-bar:nth-child(2) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.08s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.58s); animation-duration: 0.5s, 1.18s; }
+.copy-chart-bar:nth-child(3) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.14s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.64s); }
+.copy-chart-bar:nth-child(4) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.05s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.55s); animation-duration: 0.5s, 1.62s; }
+.copy-chart-bar:nth-child(5) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.18s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.68s); }
+.copy-chart-bar:nth-child(6) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.1s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.6s); animation-duration: 0.5s, 1.08s; }
 
 .copy-pad-pulse {
   position: absolute;
@@ -379,8 +418,13 @@ body {
   align-items: flex-end;
   gap: 0.28rem;
   pointer-events: none;
+  opacity: 0;
   -webkit-mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.24) 0%, rgba(0, 0, 0, 0.4) 42%, rgba(0, 0, 0, 0.72) 100%);
   mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.24) 0%, rgba(0, 0, 0, 0.4) 42%, rgba(0, 0, 0, 0.72) 100%);
+}
+
+.copy-pad-chart.is-live {
+  animation: copy-chart-pad-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) var(--cloud-chart-delay, 2.45s) both;
 }
 
 .copy-pad-chart-bar {
@@ -388,19 +432,29 @@ body {
   flex: 1;
   min-height: 0.35rem;
   border-radius: 0.14rem 0.14rem 0 0;
-  background: linear-gradient(180deg, rgba(15, 141, 75, 0.28), rgba(15, 141, 75, 0.06));
-  animation: copy-analysis-rise 4.4s ease-in-out infinite;
+  transform: scaleY(0.06);
+  transform-origin: bottom center;
+  background: linear-gradient(180deg, rgba(15, 141, 75, 0.34), rgba(15, 141, 75, 0.06));
 }
 
-.copy-pad-chart-bar:nth-child(2) { animation-delay: 0.18s; }
-.copy-pad-chart-bar:nth-child(3) { animation-delay: 0.32s; }
-.copy-pad-chart-bar:nth-child(4) { animation-delay: 0.1s; }
-.copy-pad-chart-bar:nth-child(5) { animation-delay: 0.28s; }
-.copy-pad-chart-bar:nth-child(6) { animation-delay: 0.22s; }
-.copy-pad-chart-bar:nth-child(7) { animation-delay: 0.36s; }
-.copy-pad-chart-bar:nth-child(8) { animation-delay: 0.14s; }
-.copy-pad-chart-bar:nth-child(9) { animation-delay: 0.26s; }
-.copy-pad-chart-bar:nth-child(10) { animation-delay: 0.2s; }
+.copy-pad-chart.is-live .copy-pad-chart-bar {
+  animation:
+    copy-chart-bar-in 0.58s cubic-bezier(0.16, 1, 0.3, 1) var(--bar-in-delay, 2.5s) both,
+    copy-analysis-wave 1.42s ease-in-out var(--bar-wave-delay, 3.08s) infinite;
+}
+
+.copy-pad-chart-bar:nth-child(1) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.02s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.58s); }
+.copy-pad-chart-bar:nth-child(2) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.09s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.65s); animation-duration: 0.58s, 1.18s; }
+.copy-pad-chart-bar:nth-child(3) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.16s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.72s); }
+.copy-pad-chart-bar:nth-child(4) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.05s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.61s); animation-duration: 0.58s, 1.68s; }
+.copy-pad-chart-bar:nth-child(5) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.2s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.76s); }
+.copy-pad-chart-bar:nth-child(6) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.12s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.68s); animation-duration: 0.58s, 1.08s; }
+.copy-pad-chart-bar:nth-child(7) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.24s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.8s); }
+.copy-pad-chart-bar:nth-child(8) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.07s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.63s); animation-duration: 0.58s, 1.52s; }
+.copy-pad-chart-bar:nth-child(9) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.18s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.74s); }
+.copy-pad-chart-bar:nth-child(10) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.11s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.67s); animation-duration: 0.58s, 1.22s; }
+.copy-pad-chart-bar:nth-child(11) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.22s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.78s); }
+.copy-pad-chart-bar:nth-child(12) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.14s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.7s); animation-duration: 0.58s, 1.86s; }
 
 [data-mobile='false'] .copy-pad-pulse,
 [data-mobile='false'] .copy-pad-chart {
@@ -426,6 +480,11 @@ body {
 
 [data-mobile='true'] .copy-chart-bar {
   background: linear-gradient(180deg, rgba(15, 141, 75, 0.55), rgba(15, 141, 75, 0.16));
+}
+
+[data-mobile='false'] .copy-title-pair .copy-title,
+[data-mobile='false'] .copy-title-pair .copy-body {
+  text-shadow: 0 0 14px rgba(238, 245, 240, 0.92);
 }
 
 [data-mobile='true'] .copy-eyebrow,
@@ -477,15 +536,54 @@ body {
   }
 }
 
-@keyframes copy-analysis-rise {
-  0%,
-  100% {
-    opacity: 0.62;
-    transform: translateY(6%);
+@keyframes copy-chart-pad-in {
+  from {
+    opacity: 0;
   }
-  50% {
+  to {
     opacity: 1;
-    transform: translateY(0);
+  }
+}
+
+@keyframes copy-chart-bar-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.06);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes copy-analysis-wave {
+  0% {
+    opacity: 0.5;
+    transform: scaleY(0.26);
+  }
+  16% {
+    opacity: 1;
+    transform: scaleY(1.18);
+  }
+  34% {
+    opacity: 0.62;
+    transform: scaleY(0.4);
+  }
+  52% {
+    opacity: 0.96;
+    transform: scaleY(0.98);
+  }
+  70% {
+    opacity: 0.68;
+    transform: scaleY(0.52);
+  }
+  86% {
+    opacity: 0.9;
+    transform: scaleY(0.86);
+  }
+  100% {
+    opacity: 0.5;
+    transform: scaleY(0.26);
   }
 }
 
