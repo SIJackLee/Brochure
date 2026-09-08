@@ -50,6 +50,7 @@ const initialBladeSettings: BladeSettings = {
 };
 
 const CONTROLLER_MODEL_PATH = '/models/SL802B_controller_master.glb';
+const COMM_MODEL_PATH = '/models/SL9001_comm_module_master.glb';
 const NARROW_CANVAS_PX = 640;
 /** Click-to-re-explode travel on a ~390px canvas, so PCB-to-blade stay on screen. */
 const MOBILE_REEXPLODE_SCALE = 0.58;
@@ -278,6 +279,7 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
 
 useGLTF.preload('/models/BLDC_Motor_Web_v1.glb');
 useGLTF.preload(CONTROLLER_MODEL_PATH);
+useGLTF.preload(COMM_MODEL_PATH);
 
 function ImportedController({ active }: { active: boolean }) {
   const elapsedRef = useRef(0);
@@ -437,33 +439,41 @@ function ImportedController({ active }: { active: boolean }) {
   return <primitive object={rig.clone} />;
 }
 
-/** Temporary comm module: cleaned Front_Panel stood portrait until real asset arrives. */
-function CommunicationPlaceholder() {
-  const { scene } = useGLTF(CONTROLLER_MODEL_PATH);
+function ImportedCommModule() {
+  const { scene } = useGLTF(COMM_MODEL_PATH);
   const model = useMemo(() => {
-    const root = new Group();
-    root.name = 'CommModulePlaceholder';
-
-    let panel: Mesh | undefined;
-    scene.traverse((object) => {
-      if (object instanceof Mesh && object.name.toLowerCase() === 'front_panel') {
-        panel = object;
-      }
-    });
-    if (!panel) return root;
-
-    const clone = panel.clone(true);
-    clone.geometry = clone.geometry.clone();
-    clone.geometry.center();
-    clone.material = new MeshStandardMaterial({
-      color: '#eef1ec',
-      roughness: 0.38,
+    const clone = scene.clone(true);
+    clone.name = 'CommModule';
+    const casingPlastic = new MeshStandardMaterial({
+      color: '#f2f2ed',
+      roughness: 0.46,
       metalness: 0,
     });
-    // Stand portrait: controller panel width (X) becomes upright height.
-    clone.rotation.z = Math.PI / 2;
-    root.add(clone);
-    return root;
+
+    clone.traverse((object) => {
+      if (!(object instanceof Mesh)) return;
+      const name = object.name.toLowerCase();
+
+      if (name.includes('front_decal') || name.includes('front_panel_image')) {
+        const originalMaterials = Array.isArray(object.material) ? object.material : [object.material];
+        originalMaterials.forEach((material) => {
+          const originalMaterial = material as MeshStandardMaterial;
+          originalMaterial.side = DoubleSide;
+          if (originalMaterial.map) originalMaterial.map.colorSpace = SRGBColorSpace;
+          originalMaterial.polygonOffset = true;
+          originalMaterial.polygonOffsetFactor = -2;
+          originalMaterial.polygonOffsetUnits = -2;
+          originalMaterial.needsUpdate = true;
+        });
+        return;
+      }
+
+      if (name.includes('casing_body') || name.includes('casing_front_panel')) {
+        object.material = casingPlastic;
+      }
+    });
+
+    return clone;
   }, [scene]);
 
   return <primitive object={model} />;
@@ -931,9 +941,9 @@ function PartsStudy({
         name="CommunicationStage"
         position={[fieldPlacement.communication.x, fieldPlacement.communication.y, fieldPlacement.communication.z]}
         rotation={[0.05, -0.38, 0]}
-        scale={controllerScale * 0.72 * 0.82}
+        scale={controllerScale * 0.72 * 0.9}
       >
-        <CommunicationPlaceholder />
+        <ImportedCommModule />
       </group>
     </group>
   </>;
