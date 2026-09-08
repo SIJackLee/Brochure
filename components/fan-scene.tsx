@@ -4,6 +4,16 @@ import { Environment, useGLTF } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { Box3, DoubleSide, ExtrudeGeometry, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, Shape, SRGBColorSpace, Vector3 } from 'three';
+import { computeFieldPlacement, controllerCameraPose } from '@/lib/field-stage-layout';
+import {
+  CONTROLLER_BOOT_DIGIT_DURATION,
+  CONTROLLER_BOOT_DIGIT_STARTS,
+  CONTROLLER_BOOT_FAN_START,
+  CONTROLLER_BOOT_STATUS_START,
+  CONTROLLER_POWER_END_S,
+  CONTROLLER_POWER_START_S,
+  CONTROLLER_SETTLE_HOLD_S,
+} from '@/lib/controller-boot';
 
 type BladeSettings = {
   bladeLength: number;
@@ -39,15 +49,77 @@ const initialBladeSettings: BladeSettings = {
   sweepDegrees: 0,
 };
 
+const CONTROLLER_MODEL_PATH = '/models/SL802B_controller_master.glb';
+const NARROW_CANVAS_PX = 640;
+/** Click-to-re-explode travel on a ~390px canvas, so PCB-to-blade stay on screen. */
+const MOBILE_REEXPLODE_SCALE = 0.58;
+
+function reexplodeScaleForWidth(width: number) {
+  return width < NARROW_CANVAS_PX ? MOBILE_REEXPLODE_SCALE : 1;
+}
+
 export type SectionId = 'motor' | 'controller' | 'cloud';
 
 export type MotorSceneState = 'exploded' | 'assembling' | 'assembled' | 'blade-assembly' | 'spinning' | 'showcase';
+
+type ControllerLamp = {
+  mesh: Mesh;
+  material: MeshStandardMaterial;
+};
+
+const CONTROLLER_DIGIT_VALUES = [2, 4, 7] as const;
+const CONTROLLER_ROCKER_OFF_X = 0.2;
+const CONTROLLER_ROCKER_ON_X = -0.2;
+/** LED_MENU_4 sits at the top of MENU = FAN 1 on the SL-802B print. */
+const MENU_FAN1_INDEX = 3;
+/** FAN% 10..70 are LED_FAN_01..07; 80 is LED_FAN_08 and blinks. */
+const FAN_PCT_SOLID_LAST = 6;
+const FAN_PCT_BLINK_INDEX = 7;
+const SEVEN_SEGMENTS: Record<number, string> = {
+  0: 'abcdef',
+  1: 'bc',
+  2: 'abdeg',
+  3: 'abcdg',
+  4: 'bcfg',
+  5: 'acdfg',
+  6: 'acdefg',
+  7: 'abc',
+  8: 'abcdefg',
+  9: 'abcdfg',
+};
+
+function easeSmooth(t: number) {
+  const x = Math.max(0, Math.min(1, t));
+  return x * x * (3 - 2 * x);
+}
+
+function lampify(mesh: Mesh, emissive = '#ff2f24') {
+  const original = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+  const material = original instanceof MeshStandardMaterial
+    ? original.clone()
+    : new MeshStandardMaterial({ color: '#3a1010', roughness: 0.42, metalness: 0.08 });
+  material.emissive.set(emissive);
+  material.emissiveIntensity = 0;
+  material.toneMapped = false;
+  mesh.material = material;
+  return { mesh, material } satisfies ControllerLamp;
+}
+
+function setLamp(lamp: ControllerLamp | undefined, intensity: number) {
+  if (!lamp) return;
+  const on = Math.max(0, intensity);
+  lamp.material.emissiveIntensity = on;
+  lamp.material.transparent = on < 0.98;
+  lamp.material.opacity = Math.max(0, Math.min(1, on / 0.9));
+  lamp.material.depthWrite = on > 0.6;
+  lamp.mesh.visible = on > 0.03;
+}
 
 type MotorAssemblyRef = {
   elapsed: number;
   state: MotorSceneState;
   hasPlayed: boolean;
-  /** 0 = fully assembled overlay, 1 = hover-exploded. Applied after intro. */
+  /** 0 = fully assembled, 1 = user-toggled exploded. Applied after intro. */
   hoverExplode: number;
 };
 
@@ -61,6 +133,7 @@ type MotorPartEntry = {
 };
 
 function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; assemblyRef: MutableRefObject<MotorAssemblyRef>; onReady: () => void }) {
+  const { size } = useThree();
   const { scene } = useGLTF('/models/BLDC_Motor_Web_v1.glb');
   const model = useMemo(() => {
     const clone = scene.clone(true);
@@ -175,11 +248,12 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
 
   useFrame((_, delta) => {
     const { elapsed, state, hoverExplode } = assemblyRef.current;
+    const hoverTravel = hoverExplode * reexplodeScaleForWidth(size.width);
     model.animationParts.forEach((part) => {
       const introProgress = state === 'showcase' || state === 'spinning' || state === 'blade-assembly' || state === 'assembled'
         ? 1
         : Math.max(0, Math.min(1, (elapsed - part.start) / (part.end - part.start)));
-      const progress = introProgress * (1 - hoverExplode);
+      const progress = introProgress * (1 - hoverTravel);
       const eased = progress * progress * (3 - 2 * progress);
       part.object.position.copy(part.assembledPosition);
       part.object.position.y += part.explodedOffset * (1 - eased);
@@ -191,7 +265,7 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
     const spinProgress = state === 'spinning'
       ? Math.max(0, Math.min(1, (elapsed - 3.35) / 1.0))
       : state === 'showcase' ? 1 : 0;
-    // Keep shaft / bearing / front_cover spinning slowly with the blades while hover-exploded.
+    // Keep shaft / bearing / front_cover spinning slowly with the blades while user-exploded.
     const hoverSpinFactor = Math.max(0.28, 1 - hoverExplode * 0.72);
     const speed = 5.4 * (spinProgress * spinProgress * (3 - 2 * spinProgress)) * hoverSpinFactor;
     // The imported motor is rotated 90 degrees by its parent group, so invert
@@ -203,17 +277,26 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
 }
 
 useGLTF.preload('/models/BLDC_Motor_Web_v1.glb');
-useGLTF.preload('/models/SL_802B_Controller_Web_v1.glb');
+useGLTF.preload(CONTROLLER_MODEL_PATH);
 
-function ImportedController() {
-  const { scene } = useGLTF('/models/SL_802B_Controller_Web_v1.glb');
-  const model = useMemo(() => {
+function ImportedController({ active }: { active: boolean }) {
+  const elapsedRef = useRef(0);
+  const { scene } = useGLTF(CONTROLLER_MODEL_PATH);
+  const rig = useMemo(() => {
     const clone = scene.clone(true);
     const controllerWhitePlastic = new MeshStandardMaterial({
       color: '#f2f2ed',
       roughness: 0.46,
       metalness: 0,
     });
+    const digits: Array<Record<string, ControllerLamp>> = [{}, {}, {}];
+    const fanLeds: ControllerLamp[] = [];
+    const menuLeds: ControllerLamp[] = [];
+    const settingLeds: ControllerLamp[] = [];
+    let rocker: Mesh | null = null;
+    let displayWindow: ControllerLamp | undefined;
+    let symbolI: ControllerLamp | undefined;
+    let symbolO: ControllerLamp | undefined;
 
     clone.traverse((object) => {
       if (!(object instanceof Mesh)) return;
@@ -233,18 +316,130 @@ function ImportedController() {
         return;
       }
 
-      if (name === 'enclosure_body' || name === 'front_panel') object.material = controllerWhitePlastic;
+      if (name === 'enclosure_body' || name === 'front_panel') {
+        object.material = controllerWhitePlastic;
+        return;
+      }
+
+      if (name === 'power_spst_rocker') {
+        rocker = object;
+        return;
+      }
+
+      const digitMatch = name.match(/^digit_([123])_([a-g])$/);
+      if (digitMatch) {
+        digits[Number(digitMatch[1]) - 1][digitMatch[2]] = lampify(object, '#ff2a22');
+        return;
+      }
+
+      const fanMatch = name.match(/^led_fan_(\d+)$/);
+      if (fanMatch) {
+        fanLeds[Number(fanMatch[1]) - 1] = lampify(object, '#ff2f24');
+        return;
+      }
+
+      const menuMatch = name.match(/^led_menu_(\d+)$/);
+      if (menuMatch) {
+        menuLeds[Number(menuMatch[1]) - 1] = lampify(object, '#ff3a28');
+        return;
+      }
+
+      const settingMatch = name.match(/^led_setting_[lr](\d+)$/);
+      if (settingMatch) {
+        settingLeds.push(lampify(object, '#ff3a28'));
+        return;
+      }
+
+      if (name === 'display_window_3d') {
+        displayWindow = lampify(object, '#5a0808');
+        return;
+      }
+
+      if (name === 'power_symbol_i') {
+        symbolI = lampify(object, '#f4f0e6');
+        return;
+      }
+
+      if (name === 'power_symbol_o') {
+        symbolO = lampify(object, '#f4f0e6');
+      }
     });
 
-    return clone;
+    return {
+      clone,
+      rocker: rocker as Mesh | null,
+      digits,
+      fanLeds: fanLeds.filter(Boolean),
+      menuLeds: menuLeds.filter(Boolean),
+      settingLeds,
+      displayWindow,
+      symbolI,
+      symbolO,
+    };
   }, [scene]);
 
-  return <primitive object={model} />;
+  useEffect(() => {
+    elapsedRef.current = 0;
+  }, [active]);
+
+  useFrame((_, delta) => {
+    if (!active) {
+      elapsedRef.current = 0;
+    } else {
+      elapsedRef.current += delta;
+    }
+
+    const elapsed = active ? elapsedRef.current : 0;
+    const powerT = easeSmooth((elapsed - CONTROLLER_POWER_START_S) / (CONTROLLER_POWER_END_S - CONTROLLER_POWER_START_S));
+    if (rig.rocker) {
+      rig.rocker.rotation.x = CONTROLLER_ROCKER_OFF_X + (CONTROLLER_ROCKER_ON_X - CONTROLLER_ROCKER_OFF_X) * powerT;
+    }
+    setLamp(rig.symbolI, 0.15 + powerT * 1.35);
+    setLamp(rig.symbolO, 0.55 * (1 - powerT));
+    setLamp(rig.displayWindow, powerT * 0.55);
+
+    rig.digits.forEach((segments, digitIndex) => {
+      const digitStart = CONTROLLER_BOOT_DIGIT_STARTS[digitIndex];
+      const digitT = easeSmooth((elapsed - digitStart) / CONTROLLER_BOOT_DIGIT_DURATION);
+      const lit = SEVEN_SEGMENTS[CONTROLLER_DIGIT_VALUES[digitIndex]] ?? '';
+      Object.entries(segments).forEach(([seg, lamp]) => {
+        setLamp(lamp, lit.includes(seg) ? digitT * 2.4 : 0);
+      });
+    });
+
+    const fanStep = 0.11;
+    rig.fanLeds.forEach((lamp, index) => {
+      if (index <= FAN_PCT_SOLID_LAST) {
+        const onT = easeSmooth((elapsed - (CONTROLLER_BOOT_FAN_START + index * fanStep)) / 0.16);
+        setLamp(lamp, onT * 2.55);
+        return;
+      }
+      if (index === FAN_PCT_BLINK_INDEX) {
+        const blinkReady = elapsed >= CONTROLLER_BOOT_FAN_START + (FAN_PCT_BLINK_INDEX * fanStep);
+        if (!blinkReady) {
+          setLamp(lamp, 0);
+          return;
+        }
+        const blinkOn = (elapsed * 1.65) % 1 < 0.52;
+        setLamp(lamp, blinkOn ? 2.7 : 0.06);
+        return;
+      }
+      setLamp(lamp, 0);
+    });
+
+    const statusT = easeSmooth((elapsed - CONTROLLER_BOOT_STATUS_START) / 0.4);
+    rig.menuLeds.forEach((lamp, index) => {
+      setLamp(lamp, index === MENU_FAN1_INDEX ? statusT * 1.9 : 0);
+    });
+    rig.settingLeds.forEach((lamp) => setLamp(lamp, 0));
+  });
+
+  return <primitive object={rig.clone} />;
 }
 
 /** Temporary comm module: cleaned Front_Panel stood portrait until real asset arrives. */
 function CommunicationPlaceholder() {
-  const { scene } = useGLTF('/models/SL_802B_Controller_Web_v1.glb');
+  const { scene } = useGLTF(CONTROLLER_MODEL_PATH);
   const model = useMemo(() => {
     const root = new Group();
     root.name = 'CommModulePlaceholder';
@@ -275,6 +470,7 @@ function CommunicationPlaceholder() {
 }
 
 function BladeRotor({ settings, active, assemblyRef }: { settings: BladeSettings; active: boolean; assemblyRef: MutableRefObject<MotorAssemblyRef> }) {
+  const { size } = useThree();
   const rotorRef = useRef<Group>(null);
   const bladeMaterial = useMemo(() => new MeshStandardMaterial({
     color: '#a9141b',
@@ -339,7 +535,8 @@ function BladeRotor({ settings, active, assemblyRef }: { settings: BladeSettings
     // slides the whole rotor further along shaft-forward (-X, blade side).
     // Parent group scale is 0.42, so ~12.5 local ≈ ~5.25 MotorStage units —
     // comparable to the motor shaft explode travel (~4.6) and clears the body.
-    rotorRef.current.position.x = -0.72 * (1 - easedIntro) - 12.5 * easedHover;
+    const bladeHoverTravel = 12.5 * reexplodeScaleForWidth(size.width);
+    rotorRef.current.position.x = -0.72 * (1 - easedIntro) - bladeHoverTravel * easedHover;
 
     rotorRef.current.traverse((child) => {
       if (!(child instanceof Mesh)) return;
@@ -522,11 +719,14 @@ function PartsStudy({
   activeSection,
   onMotorPhaseChange,
   onMotorHoverChange,
+  mobileLayout,
 }: {
   activeSection: SectionId;
   onMotorPhaseChange?: (phase: MotorSceneState) => void;
   onMotorHoverChange?: (hovered: boolean) => void;
+  mobileLayout: boolean;
 }) {
+  const { size } = useThree();
   const studyRef = useRef<Group>(null);
   const motorBodyRef = useRef<Group>(null);
   const controllerRef = useRef<Group>(null);
@@ -538,12 +738,16 @@ function PartsStudy({
   });
   const introClockRef = useRef(0);
   const motorReadyRef = useRef(false);
-  const motorHoveredRef = useRef(false);
+  const motorExplodedRef = useRef(false);
   const hoverExplodeRef = useRef(0);
   const lastReportedPhaseRef = useRef<MotorSceneState | null>(null);
   const onMotorPhaseChangeRef = useRef(onMotorPhaseChange);
   const onMotorHoverChangeRef = useRef(onMotorHoverChange);
   const [controllerScale, setControllerScale] = useState(1);
+  const fieldPlacement = useMemo(
+    () => computeFieldPlacement(size.width, size.height, mobileLayout),
+    [size.width, size.height, mobileLayout],
+  );
 
   useEffect(() => {
     onMotorPhaseChangeRef.current = onMotorPhaseChange;
@@ -562,7 +766,7 @@ function PartsStudy({
   useEffect(() => {
     if (activeSection === 'motor') {
       introClockRef.current = 0;
-      motorHoveredRef.current = false;
+      motorExplodedRef.current = false;
       hoverExplodeRef.current = 0;
       motorAssemblyRef.current = {
         elapsed: 0,
@@ -574,7 +778,7 @@ function PartsStudy({
       return;
     }
 
-    motorHoveredRef.current = false;
+    motorExplodedRef.current = false;
     hoverExplodeRef.current = 0;
     motorAssemblyRef.current = {
       elapsed: 5,
@@ -589,7 +793,7 @@ function PartsStudy({
     if (activeSection !== 'motor' || !motorReadyRef.current) return;
 
     const canHoverExplode = motorAssemblyRef.current.hasPlayed;
-    const hoverTarget = canHoverExplode && motorHoveredRef.current ? 1 : 0;
+    const hoverTarget = canHoverExplode && motorExplodedRef.current ? 1 : 0;
     hoverExplodeRef.current += (hoverTarget - hoverExplodeRef.current) * Math.min(1, delta * 5);
     if (Math.abs(hoverExplodeRef.current - hoverTarget) < 0.001) hoverExplodeRef.current = hoverTarget;
 
@@ -654,35 +858,48 @@ function PartsStudy({
     if (controllerScale === 1) setControllerScale((motorMaxDimension * 0.95) / controllerMaxDimension);
   }, [controllerScale]);
 
-  const setMotorHovered = (hovered: boolean) => {
+  const toggleMotorExploded = () => {
     if (!motorAssemblyRef.current.hasPlayed) return;
-    motorHoveredRef.current = hovered;
-    onMotorHoverChangeRef.current?.(hovered);
-    if (typeof document !== 'undefined') {
-      document.body.style.cursor = hovered ? 'pointer' : '';
-    }
+    motorExplodedRef.current = !motorExplodedRef.current;
+    onMotorHoverChangeRef.current?.(motorExplodedRef.current);
+  };
+
+  const setMotorCursor = (hovered: boolean) => {
+    if (!motorAssemblyRef.current.hasPlayed || typeof document === 'undefined') return;
+    document.body.style.cursor = hovered ? 'pointer' : '';
   };
 
   useEffect(() => {
     if (activeSection !== 'motor') {
+      motorExplodedRef.current = false;
       onMotorHoverChangeRef.current?.(false);
       if (typeof document !== 'undefined') document.body.style.cursor = '';
     }
   }, [activeSection]);
 
   return <>
-    <group ref={studyRef} name="ProductStages" position={[0.55, 0.05, 0]} rotation={[0.06, -0.3, 0]} scale={0.72}>
+    <group
+      ref={studyRef}
+      name="ProductStages"
+      position={mobileLayout ? [0.55, 0.05, 0] : [0.68, 0.04, 0]}
+      rotation={[0.06, -0.3, 0]}
+      scale={mobileLayout ? 0.8 : 0.90}
+    >
       <group
         name="MotorStage"
         visible={activeSection === 'motor'}
         position={[0.25, 0.15, 0]}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          toggleMotorExploded();
+        }}
         onPointerOver={(event) => {
           event.stopPropagation();
-          setMotorHovered(true);
+          setMotorCursor(true);
         }}
         onPointerOut={(event) => {
           event.stopPropagation();
-          setMotorHovered(false);
+          setMotorCursor(false);
         }}
       >
         <mesh visible={false} position={[-2.4, 0, 0]} userData={{ motorHitProxy: true }}>
@@ -697,25 +914,24 @@ function PartsStudy({
     </group>
 
     {/*
-      Section 02 empty stage = screen area to the RIGHT of the copy column.
-      Kept outside ProductStages so placement maps 1:1 to camera/screen axes.
-      Camera looks at ~1.25; copy ends near screen NDC -0.2 (~world x -0.5).
+      Section 02: pair sits around the copy-free safe rect center.
+      Controller = top-left, comm module = bottom-right of that stage.
     */}
-    <group name="FieldStage" visible={activeSection === 'controller'} position={[1.25, 0.1, 0]} scale={0.72}>
+    <group name="FieldStage" visible={activeSection === 'controller'}>
       <group
         name="ControllerStage"
         ref={controllerRef}
-        position={[-1.05, 1.45, 0]}
-        rotation={[0.05, -0.16, 0]}
-        scale={controllerScale}
+        position={[fieldPlacement.controller.x, fieldPlacement.controller.y, fieldPlacement.controller.z]}
+        rotation={[0.08, -0.22, 0]}
+        scale={controllerScale * 0.72}
       >
-        <ImportedController />
+        <ImportedController active={activeSection === 'controller'} />
       </group>
       <group
         name="CommunicationStage"
-        position={[1.7, -1.5, 0.22]}
-        rotation={[0.04, 0.22, 0]}
-        scale={controllerScale * 1.15}
+        position={[fieldPlacement.communication.x, fieldPlacement.communication.y, fieldPlacement.communication.z]}
+        rotation={[0.05, -0.38, 0]}
+        scale={controllerScale * 0.72 * 0.82}
       >
         <CommunicationPlaceholder />
       </group>
@@ -725,25 +941,22 @@ function PartsStudy({
 
 type CameraRigProps = {
   activeSection: SectionId;
+  mobileLayout: boolean;
 };
 
 const CAMERA_POSES: Record<SectionId, { position: Vector3; target: Vector3 }> = {
   motor: {
-    position: new Vector3(-0.15, 0.18, 9.2),
-    target: new Vector3(-0.15, 0.12, 0),
+    position: new Vector3(0.15, 0.16, 8.95),
+    target: new Vector3(0.28, 0.1, 0),
   },
-  controller: {
-    // Center of the right empty stage (past the copy column).
-    position: new Vector3(1.25, 0.05, 8.2),
-    target: new Vector3(1.25, -0.12, 0),
-  },
+  controller: controllerCameraPose(false),
   cloud: {
     position: new Vector3(-7, 0, 8.8),
     target: new Vector3(-7, 0, 0),
   },
 };
 
-function CameraRig({ activeSection }: CameraRigProps) {
+function CameraRig({ activeSection, mobileLayout }: CameraRigProps) {
   const { camera, size } = useThree();
   const elapsedRef = useRef(0);
   const initializedRef = useRef(false);
@@ -757,6 +970,11 @@ function CameraRig({ activeSection }: CameraRigProps) {
   const nextTarget = useMemo(() => new Vector3(), []);
 
   const getResponsivePose = (section: SectionId) => {
+    if (section === 'controller') {
+      const pose = controllerCameraPose(mobileLayout);
+      return { position: pose.position.clone(), target: pose.target.clone() };
+    }
+
     const pose = CAMERA_POSES[section];
     const position = pose.position.clone();
     const target = pose.target.clone();
@@ -764,12 +982,13 @@ function CameraRig({ activeSection }: CameraRigProps) {
     if (size.width < 640) {
       // Look slightly BELOW the product so it sits in the upper mid band
       // (above the fixed copy strip, below the fixed header).
-      position.z += section === 'motor' ? 1.35 : 1.7;
-      position.y -= section === 'motor' ? 0.35 : 0.1;
-      target.y -= section === 'motor' ? 1.05 : 0.55;
-      if (section === 'controller') {
-        position.x = 0.1;
-        target.x = 0.1;
+      // Motor offsets keep the previous phone framing after the PC hero was scaled up.
+      position.z += section === 'motor' ? 1.55 : 1.7;
+      position.y -= section === 'motor' ? 0.08 : 0.1;
+      target.y -= section === 'motor' ? 0.42 : 0.55;
+      if (section === 'motor') {
+        position.x += 0.22;
+        target.x += 0.12;
       }
     }
     return { position, target };
@@ -791,7 +1010,7 @@ function CameraRig({ activeSection }: CameraRigProps) {
 
     toPosition.copy(pose.position);
     toTarget.copy(pose.target);
-  }, [activeSection, camera, size.width, currentTarget, fromPosition, fromTarget, toPosition, toTarget]);
+  }, [activeSection, camera, size.width, mobileLayout, currentTarget, fromPosition, fromTarget, toPosition, toTarget]);
 
   useFrame((_, delta) => {
     elapsedRef.current += delta;
@@ -807,7 +1026,7 @@ function CameraRig({ activeSection }: CameraRigProps) {
       if (activeSection === 'motor') {
         nextPosition.x += Math.sin(elapsedRef.current * 0.16) * 0.16;
         nextPosition.y += Math.cos(elapsedRef.current * 0.14) * 0.07;
-      } else if (activeSection === 'controller') {
+      } else if (activeSection === 'controller' && elapsedRef.current > CONTROLLER_SETTLE_HOLD_S) {
         nextPosition.x += Math.sin(elapsedRef.current * 0.12) * 0.08;
         nextPosition.z += Math.sin(elapsedRef.current * 0.1) * 0.1;
       }
@@ -835,24 +1054,35 @@ export default function FanScene({
   mobileLayout = false,
 }: FanSceneProps) {
   const allowMotorPointer = activeSection === 'motor';
+  const controllerStage = activeSection === 'controller';
 
   return (
     <div className="relative h-full w-full">
       <Canvas
+        dpr={[1, 2]}
+        gl={{ antialias: true, powerPreference: 'high-performance' }}
         camera={{ fov: mobileLayout ? 42 : 38, position: [0, 0, 8.2] }}
         style={{ pointerEvents: allowMotorPointer ? 'auto' : 'none' }}
       >
-        <color attach="background" args={['#dfece5']} />
-        <ambientLight intensity={0.72} />
-        <directionalLight intensity={2.8} position={[4, 5, 5]} />
-        <directionalLight intensity={1.1} position={[-4, 2, 2]} color="#d9eee6" />
-        <Environment preset="warehouse" />
+        <color attach="background" args={[controllerStage ? '#c5c6c2' : '#dfece5']} />
+        <ambientLight intensity={controllerStage ? 0.58 : 0.72} />
+        <directionalLight intensity={controllerStage ? 2.2 : 2.8} position={[4, 5, 5]} />
+        <directionalLight
+          intensity={controllerStage ? 0.7 : 1.1}
+          position={[-4, 2, 2]}
+          color={controllerStage ? '#cfd4cf' : '#d9eee6'}
+        />
+        <Environment preset="warehouse" background={false} environmentIntensity={controllerStage ? 0.42 : 1} />
+        {controllerStage ? (
+          <directionalLight intensity={0.85} position={[-6, 3.2, 5]} color="#f3f3ef" />
+        ) : null}
         <PartsStudy
           activeSection={activeSection}
           onMotorPhaseChange={onMotorPhaseChange}
           onMotorHoverChange={onMotorHoverChange}
+          mobileLayout={mobileLayout}
         />
-        <CameraRig activeSection={activeSection} />
+        <CameraRig activeSection={activeSection} mobileLayout={mobileLayout} />
       </Canvas>
     </div>
   );

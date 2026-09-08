@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Control the Climate | SUNG-IL',
+  title: 'Drive the Air | SUNG-IL',
   description: 'A 3D smart ventilation brochure concept for SUNG-IL.',
 };
 
