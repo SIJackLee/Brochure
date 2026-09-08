@@ -7,6 +7,7 @@ import {
   CONTROLLER_TYPE_START_MS,
   CONTROLLER_TYPE_STEP_MS,
 } from '@/lib/controller-boot';
+import { MOTOR_DUST_DELAY_SHOWCASE_MS, MOTOR_DUST_DELAY_SPIN_MS } from '@/lib/intro-timing';
 import Image from 'next/image';
 import { useEffect, useRef, useState, type WheelEvent } from 'react';
 
@@ -168,7 +169,7 @@ export default function Home() {
       dustWashDelayRef.current = setTimeout(() => {
         setDustWashing(true);
         dustWashDelayRef.current = null;
-      }, phase === 'spinning' ? 480 : 280);
+      }, phase === 'spinning' ? MOTOR_DUST_DELAY_SPIN_MS : MOTOR_DUST_DELAY_SHOWCASE_MS);
     }
   };
 
@@ -238,7 +239,7 @@ export default function Home() {
       {/* 3D stage — fixed canvas; mobile sections only switch scene/copy over it. */}
       <div
         className={`${stagePos} inset-0 z-0 ${stageH} ${
-          activeSection === 'motor' ? 'pointer-events-auto' : 'pointer-events-none'
+          activeSection === 'motor' || activeSection === 'cloud' ? 'pointer-events-auto' : 'pointer-events-none'
         }`}
       >
         <FanScene
@@ -303,8 +304,8 @@ export default function Home() {
             }}
             className={
               mobileLayout
-                ? 'mobile-section-layout relative z-10 grid h-full snap-start overflow-hidden px-4'
-                : 'relative flex min-h-[100svh] snap-start items-center px-6 py-28 sm:px-10 lg:px-14'
+                ? 'mobile-section-layout pointer-events-none relative z-10 grid h-full snap-start overflow-hidden px-4'
+                : 'pointer-events-none relative flex min-h-[100svh] snap-start items-center px-6 py-28 sm:px-10 lg:px-14'
             }
           >
             {mobileLayout && (
@@ -328,17 +329,43 @@ export default function Home() {
                   }}
                 />
               )}
+              {section.id === 'motor' && (
+                <>
+                  <div aria-hidden="true" className={`motor-dust-pad${dustWashing ? ' is-washing' : ''}`} />
+                  <div aria-hidden="true" className={`copy-air-pad${dustWashing ? ' is-revealed' : ''}`} />
+                </>
+              )}
+              {section.id === 'controller' ? (
+                <div
+                  aria-hidden="true"
+                  className={`copy-pad-pulse${controllerOn ? ' is-on' : ''}`}
+                />
+              ) : null}
+              {section.id === 'cloud' ? (
+                <div className="copy-pad-chart" aria-hidden="true">
+                  <span className="copy-pad-chart-bar" style={{ height: '38%' }} />
+                  <span className="copy-pad-chart-bar" style={{ height: '22%' }} />
+                  <span className="copy-pad-chart-bar" style={{ height: '54%' }} />
+                  <span className="copy-pad-chart-bar" style={{ height: '31%' }} />
+                  <span className="copy-pad-chart-bar" style={{ height: '72%' }} />
+                  <span className="copy-pad-chart-bar" style={{ height: '44%' }} />
+                  <span className="copy-pad-chart-bar" style={{ height: '61%' }} />
+                  <span className="copy-pad-chart-bar" style={{ height: '36%' }} />
+                  <span className="copy-pad-chart-bar" style={{ height: '80%' }} />
+                  <span className="copy-pad-chart-bar" style={{ height: '48%' }} />
+                </div>
+              ) : null}
               <div
                 key={section.id === 'motor' ? motorSequence : section.id}
-                className={section.id === 'motor' ? 'motor-copy-sequence' : 'relative'}
+                className={`relative z-[1] ${section.id === 'motor' ? 'motor-copy-sequence' : ''}`}
               >
-                {section.id === 'motor' && (
-                  <>
-                    <div aria-hidden="true" className={`motor-dust-pad${dustWashing ? ' is-washing' : ''}`} />
-                    <div aria-hidden="true" className={`copy-air-pad${dustWashing ? ' is-revealed' : ''}`} />
-                  </>
-                )}
-                <div className={`relative z-[1] ${section.id === 'controller' || section.id === 'cloud' ? 'copy-with-aside' : ''}`}>
+                <div className={`relative z-[1] ${
+                  section.id === 'controller'
+                    ? 'copy-with-aside copy-title-pair'
+                    : section.id === 'cloud'
+                      ? 'copy-with-aside'
+                      : ''
+                }`}>
                   <p
                     className={`copy-eyebrow font-semibold uppercase tracking-[0.24em] text-[#0f8d4b] ${
                       mobileLayout ? 'mb-2 text-[11px]' : 'mb-5 text-sm'
@@ -350,7 +377,7 @@ export default function Home() {
                     className={`copy-title font-semibold leading-[0.92] text-[#132019] ${
                       mobileLayout
                         ? 'max-w-[13ch] text-[1.9rem]'
-                        : 'max-w-xl text-5xl sm:text-7xl lg:text-8xl'
+                        : `${section.titleRest ? 'w-max max-w-none whitespace-nowrap' : 'max-w-xl'} text-5xl sm:text-7xl lg:text-8xl`
                     } ${section.id === 'controller' && activeSection === 'controller' ? 'relative' : ''}`}
                   >
                     {section.id === 'controller' && activeSection === 'controller' ? (

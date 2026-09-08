@@ -2,18 +2,36 @@
 
 import { Environment, useGLTF } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, Suspense, type MutableRefObject } from 'react';
 import { Box3, DoubleSide, ExtrudeGeometry, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, Shape, SRGBColorSpace, Vector3 } from 'three';
+import { CloudScreen } from '@/components/cloud-stage';
 import { computeFieldPlacement, controllerCameraPose } from '@/lib/field-stage-layout';
 import {
   CONTROLLER_BOOT_DIGIT_DURATION,
   CONTROLLER_BOOT_DIGIT_STARTS,
   CONTROLLER_BOOT_FAN_START,
+  CONTROLLER_BOOT_FAN_STEP_S,
   CONTROLLER_BOOT_STATUS_START,
+  CONTROLLER_CAMERA_MOVE_S,
   CONTROLLER_POWER_END_S,
   CONTROLLER_POWER_START_S,
   CONTROLLER_SETTLE_HOLD_S,
 } from '@/lib/controller-boot';
+import {
+  MOTOR_AIRFLOW_DUST_LEAD_S,
+  MOTOR_AIRFLOW_DUST_WINDOW_S,
+  MOTOR_ASSEMBLED_END_S,
+  MOTOR_ASSEMBLE_END_S,
+  MOTOR_BLADE_END_S,
+  MOTOR_BLADE_RAMP_S,
+  MOTOR_BLADE_START_S,
+  MOTOR_EXPLODED_HOLD_S,
+  MOTOR_INTRO_END_S,
+  MOTOR_PART_WINDOWS,
+  MOTOR_SPIN_END_S,
+  MOTOR_SPIN_RAMP_S,
+  MOTOR_SPIN_START_S,
+} from '@/lib/intro-timing';
 
 type BladeSettings = {
   bladeLength: number;
@@ -147,13 +165,13 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
       // fixed anchor. PCB must explode further along -Y (past lower), not
       // toward the middle stack — otherwise it tunnels through housing_lower.
       // Target keeps ~40 unit gap between PCB max and lower min.
-      ['pcb_cover_assy', -210, 0.18, 0.82],
-      ['extrusion_housing', 80, 0.38, 1.02],
-      ['st_assy', 190, 0.58, 1.22],
-      ['housing_upper', 300, 0.78, 1.42],
-      ['front_cover', 410, 0.98, 1.62],
-      ['bearing', 510, 1.18, 1.82],
-      ['shaft', 630, 1.38, 2.08],
+      ['pcb_cover_assy', -210, ...MOTOR_PART_WINDOWS[0]],
+      ['extrusion_housing', 80, ...MOTOR_PART_WINDOWS[1]],
+      ['st_assy', 190, ...MOTOR_PART_WINDOWS[2]],
+      ['housing_upper', 300, ...MOTOR_PART_WINDOWS[3]],
+      ['front_cover', 410, ...MOTOR_PART_WINDOWS[4]],
+      ['bearing', 510, ...MOTOR_PART_WINDOWS[5]],
+      ['shaft', 630, ...MOTOR_PART_WINDOWS[6]],
     ] as const;
     const assemblyParts = new Map<string, { explodedCenter: number; start: number; end: number }>(
       assemblyOrder.map(([name, explodedCenter, start, end]) => [name, { explodedCenter, start, end }]),
@@ -264,7 +282,7 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
     if (!active) return;
 
     const spinProgress = state === 'spinning'
-      ? Math.max(0, Math.min(1, (elapsed - 3.35) / 1.0))
+      ? Math.max(0, Math.min(1, (elapsed - MOTOR_SPIN_START_S) / MOTOR_SPIN_RAMP_S))
       : state === 'showcase' ? 1 : 0;
     // Keep shaft / bearing / front_cover spinning slowly with the blades while user-exploded.
     const hoverSpinFactor = Math.max(0.28, 1 - hoverExplode * 0.72);
@@ -409,7 +427,7 @@ function ImportedController({ active }: { active: boolean }) {
       });
     });
 
-    const fanStep = 0.11;
+    const fanStep = CONTROLLER_BOOT_FAN_STEP_S;
     rig.fanLeds.forEach((lamp, index) => {
       if (index <= FAN_PCT_SOLID_LAST) {
         const onT = easeSmooth((elapsed - (CONTROLLER_BOOT_FAN_START + index * fanStep)) / 0.16);
@@ -537,7 +555,7 @@ function BladeRotor({ settings, active, assemblyRef }: { settings: BladeSettings
     const { elapsed, state, hoverExplode } = assemblyRef.current;
     const introAssembly = state === 'showcase' || state === 'spinning'
       ? 1
-      : Math.max(0, Math.min(1, (elapsed - 2.65) / 0.7));
+      : Math.max(0, Math.min(1, (elapsed - MOTOR_BLADE_START_S) / MOTOR_BLADE_RAMP_S));
     const easedIntro = introAssembly * introAssembly * (3 - 2 * introAssembly);
     const easedHover = hoverExplode * hoverExplode * (3 - 2 * hoverExplode);
 
@@ -563,7 +581,7 @@ function BladeRotor({ settings, active, assemblyRef }: { settings: BladeSettings
 
     if (!active) return;
     const spinProgress = state === 'spinning'
-      ? Math.max(0, Math.min(1, (elapsed - 3.35) / 1.0))
+      ? Math.max(0, Math.min(1, (elapsed - MOTOR_SPIN_START_S) / MOTOR_SPIN_RAMP_S))
       : state === 'showcase' ? 1 : 0;
     const hoverSpinFactor = Math.max(0.28, 1 - hoverExplode * 0.72);
     const speed = 5.4 * (spinProgress * spinProgress * (3 - 2 * spinProgress)) * hoverSpinFactor;
@@ -606,8 +624,8 @@ type AirflowStreak = {
   kind: 'air' | 'dust';
 };
 
-const AIRFLOW_DUST_LEAD_IN = 0.48;
-const AIRFLOW_DUST_WINDOW = 4.2;
+const AIRFLOW_DUST_LEAD_IN = MOTOR_AIRFLOW_DUST_LEAD_S;
+const AIRFLOW_DUST_WINDOW = MOTOR_AIRFLOW_DUST_WINDOW_S;
 
 /**
  * Exhaust causality (section 1):
@@ -655,7 +673,7 @@ function AirflowStreaks({
     else blowClockRef.current = 0;
 
     const spinProgress = state === 'spinning'
-      ? Math.max(0, Math.min(1, (elapsed - 3.35) / 1.0))
+      ? Math.max(0, Math.min(1, (elapsed - MOTOR_SPIN_START_S) / MOTOR_SPIN_RAMP_S))
       : state === 'showcase' ? 1 : 0;
     const spinEase = spinProgress * spinProgress * (3 - 2 * spinProgress);
     const dustWindowEnd = AIRFLOW_DUST_LEAD_IN + AIRFLOW_DUST_WINDOW;
@@ -736,7 +754,7 @@ function PartsStudy({
   onMotorHoverChange?: (hovered: boolean) => void;
   mobileLayout: boolean;
 }) {
-  const { size } = useThree();
+  const { size, gl } = useThree();
   const studyRef = useRef<Group>(null);
   const motorBodyRef = useRef<Group>(null);
   const controllerRef = useRef<Group>(null);
@@ -791,7 +809,7 @@ function PartsStudy({
     motorExplodedRef.current = false;
     hoverExplodeRef.current = 0;
     motorAssemblyRef.current = {
-      elapsed: 5,
+      elapsed: MOTOR_INTRO_END_S,
       state: 'showcase',
       hasPlayed: true,
       hoverExplode: 0,
@@ -810,7 +828,7 @@ function PartsStudy({
     if (motorAssemblyRef.current.hasPlayed) {
       motorAssemblyRef.current = {
         ...motorAssemblyRef.current,
-        elapsed: 5,
+        elapsed: MOTOR_INTRO_END_S,
         state: 'showcase',
         hasPlayed: true,
         hoverExplode: hoverExplodeRef.current,
@@ -820,20 +838,20 @@ function PartsStudy({
     }
 
     introClockRef.current += delta;
-    const elapsed = Math.min(introClockRef.current, 5);
-    const state: MotorSceneState = elapsed < 0.15
+    const elapsed = Math.min(introClockRef.current, MOTOR_INTRO_END_S);
+    const state: MotorSceneState = elapsed < MOTOR_EXPLODED_HOLD_S
       ? 'exploded'
-      : elapsed < 2.35
+      : elapsed < MOTOR_ASSEMBLE_END_S
         ? 'assembling'
-        : elapsed < 2.65
+        : elapsed < MOTOR_ASSEMBLED_END_S
           ? 'assembled'
-          : elapsed < 3.35
+          : elapsed < MOTOR_BLADE_END_S
             ? 'blade-assembly'
-            : elapsed < 4.35 ? 'spinning' : 'showcase';
+            : elapsed < MOTOR_SPIN_END_S ? 'spinning' : 'showcase';
 
-    if (elapsed >= 5) {
+    if (elapsed >= MOTOR_INTRO_END_S) {
       motorAssemblyRef.current = {
-        elapsed: 5,
+        elapsed: MOTOR_INTRO_END_S,
         state: 'showcase',
         hasPlayed: true,
         hoverExplode: hoverExplodeRef.current,
@@ -868,11 +886,22 @@ function PartsStudy({
     if (controllerScale === 1) setControllerScale((motorMaxDimension * 0.95) / controllerMaxDimension);
   }, [controllerScale]);
 
+  const activeSectionRef = useRef(activeSection);
+  activeSectionRef.current = activeSection;
+
   const toggleMotorExploded = () => {
+    if (activeSectionRef.current !== 'motor') return;
     if (!motorAssemblyRef.current.hasPlayed) return;
     motorExplodedRef.current = !motorExplodedRef.current;
     onMotorHoverChangeRef.current?.(motorExplodedRef.current);
   };
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const handleClick = () => toggleMotorExploded();
+    canvas.addEventListener('click', handleClick);
+    return () => canvas.removeEventListener('click', handleClick);
+  }, [gl]);
 
   const setMotorCursor = (hovered: boolean) => {
     if (!motorAssemblyRef.current.hasPlayed || typeof document === 'undefined') return;
@@ -899,10 +928,6 @@ function PartsStudy({
         name="MotorStage"
         visible={activeSection === 'motor'}
         position={[0.25, 0.15, 0]}
-        onPointerDown={(event) => {
-          event.stopPropagation();
-          toggleMotorExploded();
-        }}
         onPointerOver={(event) => {
           event.stopPropagation();
           setMotorCursor(true);
@@ -912,15 +937,14 @@ function PartsStudy({
           setMotorCursor(false);
         }}
       >
-        <mesh visible={false} position={[-2.4, 0, 0]} userData={{ motorHitProxy: true }}>
-          <boxGeometry args={[7.2, 3.4, 3.4]} />
+        <mesh position={[-2.4, 0, 0]} userData={{ motorHitProxy: true }}>
+          <boxGeometry args={[8.4, 4.4, 4.2]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
         <group ref={motorBodyRef} rotation={[0, 0, Math.PI / 2]} scale={0.008}><ImportedMotor active={activeSection === 'motor'} assemblyRef={motorAssemblyRef} onReady={() => { motorReadyRef.current = true; }} /></group>
         <group position={[-0.76, 0, 0]} scale={0.42}><BladeRotor active={activeSection === 'motor'} assemblyRef={motorAssemblyRef} settings={initialBladeSettings} /></group>
         <AirflowStreaks assemblyRef={motorAssemblyRef} active={activeSection === 'motor'} />
       </group>
-
-      <group name="CloudStage" visible={activeSection === 'cloud'} />
     </group>
 
     {/*
@@ -946,6 +970,14 @@ function PartsStudy({
         <ImportedCommModule />
       </group>
     </group>
+
+    {activeSection === 'cloud' ? (
+      <group name="CloudStage">
+        <Suspense fallback={null}>
+          <CloudScreen placement={fieldPlacement} mobile={mobileLayout} />
+        </Suspense>
+      </group>
+    ) : null}
   </>;
 }
 
@@ -980,7 +1012,7 @@ function CameraRig({ activeSection, mobileLayout }: CameraRigProps) {
   const nextTarget = useMemo(() => new Vector3(), []);
 
   const getResponsivePose = (section: SectionId) => {
-    if (section === 'controller') {
+    if (section === 'controller' || section === 'cloud') {
       const pose = controllerCameraPose(mobileLayout);
       return { position: pose.position.clone(), target: pose.target.clone() };
     }
@@ -1025,7 +1057,7 @@ function CameraRig({ activeSection, mobileLayout }: CameraRigProps) {
   useFrame((_, delta) => {
     elapsedRef.current += delta;
     if (transitionRef.current > 0 && transitionRef.current < 1) {
-      transitionRef.current = Math.min(1, transitionRef.current + delta / 1.1);
+      transitionRef.current = Math.min(1, transitionRef.current + delta / CONTROLLER_CAMERA_MOVE_S);
       const eased = transitionRef.current * transitionRef.current * (3 - 2 * transitionRef.current);
       nextPosition.lerpVectors(fromPosition, toPosition, eased);
       nextTarget.lerpVectors(fromTarget, toTarget, eased);
@@ -1063,7 +1095,7 @@ export default function FanScene({
   onMotorHoverChange,
   mobileLayout = false,
 }: FanSceneProps) {
-  const allowMotorPointer = activeSection === 'motor';
+  const allowPointer = activeSection === 'motor' || activeSection === 'cloud';
   const controllerStage = activeSection === 'controller';
 
   return (
@@ -1072,7 +1104,7 @@ export default function FanScene({
         dpr={[1, 2]}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
         camera={{ fov: mobileLayout ? 42 : 38, position: [0, 0, 8.2] }}
-        style={{ pointerEvents: allowMotorPointer ? 'auto' : 'none' }}
+        style={{ pointerEvents: allowPointer ? 'auto' : 'none' }}
       >
         <color attach="background" args={[controllerStage ? '#c5c6c2' : '#dfece5']} />
         <ambientLight intensity={controllerStage ? 0.58 : 0.72} />

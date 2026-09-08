@@ -1,17 +1,20 @@
-/** Camera lerp to section 02 is 1.1s; hold a beat after arrival before power. */
-export const CONTROLLER_CAMERA_MOVE_S = 1.1;
-export const CONTROLLER_SETTLE_HOLD_S = 1.3;
+import { SECTION_CAMERA_MOVE_S } from '@/lib/intro-timing';
+
+/** Camera lerp to section 02; power starts as the pair arrives. */
+export const CONTROLLER_CAMERA_MOVE_S = SECTION_CAMERA_MOVE_S;
+export const CONTROLLER_SETTLE_HOLD_S = 0.55;
 
 export const CONTROLLER_POWER_START_S = CONTROLLER_SETTLE_HOLD_S;
-export const CONTROLLER_POWER_END_S = CONTROLLER_POWER_START_S + 0.44;
+export const CONTROLLER_POWER_END_S = CONTROLLER_POWER_START_S + 0.22;
 
-export const CONTROLLER_BOOT_DIGIT_STARTS = [1.8, 2.08, 2.36] as const;
-export const CONTROLLER_BOOT_DIGIT_DURATION = 0.28;
-export const CONTROLLER_BOOT_FAN_START = 2.6;
-export const CONTROLLER_BOOT_STATUS_START = 3.56;
-export const CONTROLLER_BOOT_SHOWCASE_AT = 4.28;
+export const CONTROLLER_BOOT_DIGIT_STARTS = [0.78, 0.94, 1.10] as const;
+export const CONTROLLER_BOOT_DIGIT_DURATION = 0.16;
+export const CONTROLLER_BOOT_FAN_START = 1.18;
+export const CONTROLLER_BOOT_FAN_STEP_S = 0.065;
+export const CONTROLLER_BOOT_STATUS_START = 1.72;
+export const CONTROLLER_BOOT_SHOWCASE_AT = 2.15;
 
-/** Copy types only after the rocker has finished turning on. */
-export const CONTROLLER_TYPE_START_MS = Math.round(CONTROLLER_POWER_END_S * 1000 + 60);
-export const CONTROLLER_TYPE_STEP_MS = 72;
-export const CONTROLLER_TYPE_LINE_GAP_MS = 90;
+/** Copy types as soon as the rocker has finished turning on. */
+export const CONTROLLER_TYPE_START_MS = Math.round(CONTROLLER_POWER_END_S * 1000 + 40);
+export const CONTROLLER_TYPE_STEP_MS = 36;
+export const CONTROLLER_TYPE_LINE_GAP_MS = 40;
