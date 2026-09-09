@@ -10,7 +10,7 @@ import {
 import { CLOUD_CHART_AT_S, MOTOR_DUST_DELAY_SHOWCASE_MS, MOTOR_DUST_DELAY_SPIN_MS } from '@/lib/intro-timing';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 
 const FanScene = dynamic(() => import('@/components/fan-scene'), { ssr: false });
 
@@ -29,30 +29,30 @@ const sections: Array<{
     eyebrow: '01 / DRIVE',
     title: 'Drive',
     titleRest: 'the Air',
-    description: 'A BLDC motor and axial fan',
-    descriptionRest: 'that drives air through houses.',
-    mobileDescription: 'A BLDC motor and axial fan',
-    mobileDescriptionRest: 'that drives air through houses.',
+    description: 'Fans, hoods, and inlet windows.',
+    descriptionRest: 'AC or BLDC, in the blade size the house needs.',
+    mobileDescription: 'Fans, hoods, and inlet windows.',
+    mobileDescriptionRest: 'AC or BLDC, sized to the house.',
   },
   {
     id: 'controller',
     eyebrow: '02 / CONTROL',
     title: 'Control',
     titleRest: 'the Flow',
-    description: 'Controller turns barn conditions into fan commands.',
-    descriptionRest: 'The comm module carries that flow to the cloud.',
-    mobileDescription: 'Controller turns barn conditions into fan commands.',
-    mobileDescriptionRest: 'The comm module carries that flow to the cloud.',
+    description: 'Channels, timers, and sizes.',
+    descriptionRest: 'Control that fits the house you run.',
+    mobileDescription: 'Channels, timers, and sizes.',
+    mobileDescriptionRest: 'Control that fits the house.',
   },
   {
     id: 'cloud',
     eyebrow: '03 / OBSERVE',
     title: 'Observe',
     titleRest: 'the Field',
-    description: 'Field data from every drive and command,',
-    descriptionRest: 'in one operating view.',
-    mobileDescription: 'Field data from every drive and command,',
-    mobileDescriptionRest: 'in one operating view.',
+    description: 'Climate graphs. Barn status at a glance.',
+    descriptionRest: 'Recommended temperatures, by the standard.',
+    mobileDescription: 'Climate graphs. Status at a glance.',
+    mobileDescriptionRest: 'Recommended temperatures by the standard.',
   },
 ];
 
@@ -72,109 +72,164 @@ function squareWavePath(periods: number) {
 
 const SQUARE_WAVE_D = squareWavePath(7);
 
-const OBSERVE_SCAN_S = 3;
+type ObservePoint = { i: string; x: number; y: number };
 
-type ObserveAnchor = { x: number; y: number };
-
-function samplePolylineY(points: Array<{ x: number; y: number }>, x: number) {
-  if (points.length === 0) return 0;
-  if (x <= points[0].x) return points[0].y;
-  for (let index = 1; index < points.length; index += 1) {
-    const left = points[index - 1];
-    const right = points[index];
-    if (x <= right.x) {
-      const span = right.x - left.x;
-      const t = span <= 0 ? 0 : (x - left.x) / span;
-      return left.y + (right.y - left.y) * t;
-    }
-  }
-  return points[points.length - 1].y;
+function observeLineD(points: ObservePoint[]) {
+  return points
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+    .join(' ');
 }
 
-function observeChartPoints(anchors: ObserveAnchor[], width: number, height: number) {
-  if (anchors.length === 0 || width < 8 || height < 8) return [];
+function observeAreaD(points: ObservePoint[], height: number) {
+  const line = observeLineD(points);
+  const last = points[points.length - 1];
+  if (!line || !last) return '';
+  return `${line} L ${last.x.toFixed(2)} ${height} L 0 ${height} Z`;
+}
 
-  const dipY = (left: ObserveAnchor, right: ObserveAnchor) => {
-    const sameLine = Math.abs(left.y - right.y) < 28;
-    const dip = sameLine ? 16 : 8;
-    return Math.min(height * 0.9, Math.max(left.y, right.y) + dip);
+function observeWavePoints(
+  periodWidth: number,
+  height: number,
+  harmonics: Array<[cycles: number, amp: number, phase: number]>,
+  baseline = 0.42,
+  periods = 2,
+) {
+  if (periodWidth < 8 || height < 8) return [] as ObservePoint[];
+  const stepsPer = 32;
+  const steps = stepsPer * periods;
+  const yPad = Math.max(8, height * 0.16);
+  const usable = Math.max(8, height - yPad * 2);
+  const valueAt = (t: number) => {
+    const wobble = harmonics.reduce(
+      (sum, [cycles, amp, phase]) => sum + amp * Math.sin((t * cycles + phase) * Math.PI * 2),
+      0,
+    );
+    return Math.min(1, Math.max(0, baseline + wobble));
   };
-
-  const peaks = anchors.map((anchor, index) => ({
-    i: `p${index}`,
-    x: anchor.x,
-    y: anchor.y,
-    peak: true as const,
-  }));
-
-  const points: Array<{ i: string; x: number; y: number; peak?: boolean }> = [];
-  const first = peaks[0];
-  if (first && first.x > 6) {
-    const start = { x: 0, y: Math.min(height * 0.86, first.y + 14) };
-    points.push({ i: 'start', ...start });
-    points.push({ i: 'sv', x: first.x * 0.5, y: dipY(start, first) });
-  }
-
-  peaks.forEach((peak, index) => {
-    points.push(peak);
-    const next = peaks[index + 1];
-    if (!next) return;
-    points.push({
-      i: `v${index}`,
-      x: (peak.x + next.x) / 2,
-      y: dipY(peak, next),
-    });
+  const points = Array.from({ length: steps + 1 }, (_, index) => {
+    const t = index / stepsPer;
+    return {
+      i: `${index}`,
+      x: t * periodWidth,
+      y: yPad + (1 - valueAt(t)) * usable,
+    };
   });
-
-  const last = peaks[peaks.length - 1];
-  if (last && last.x < width - 6) {
-    const end = { x: width, y: Math.min(height * 0.86, last.y + 14) };
-    points.push({ i: 'ev', x: (last.x + width) / 2, y: dipY(last, end) });
-    points.push({ i: 'end', ...end });
-  }
-
+  points[points.length - 1].y = points[0].y;
   return points;
 }
 
-function observeBarLayout(points: Array<{ x: number; y: number }>, width: number, height: number) {
-  if (points.length === 0 || width < 8 || height < 8) return { barW: 8, bars: [] as Array<{ i: string; x: number; y: number }> };
-  const targetW = Math.max(5, Math.min(9, width / 42));
-  const count = Math.max(8, Math.round((2 * width / targetW + 1) / 3));
-  const barW = (2 * width) / (3 * count - 1);
-  const step = barW * 1.5;
-  const bars = Array.from({ length: count }, (_, index) => {
-    const x = index * step;
-    const y = samplePolylineY(points, x + barW / 2);
-    return { i: `b${index}`, x, y };
+function observeMotorBars(periodWidth: number, height: number, periods = 2) {
+  if (periodWidth < 8 || height < 8) return { barW: 8, bars: [] as Array<{ i: string; x: number; y: number; h: number }> };
+  const countPer = Math.max(18, Math.round(periodWidth / 16));
+  const step = periodWidth / countPer;
+  const barW = step * 0.72;
+  const yPad = Math.max(6, height * 0.12);
+  const usable = Math.max(8, height - yPad);
+  const bars = Array.from({ length: countPer * periods }, (_, index) => {
+    const t = (index % countPer) / countPer;
+    const n =
+      0.22 +
+      0.7 *
+        (0.55 +
+          0.28 * Math.sin((t * 3 + 0.08) * Math.PI * 2) +
+          0.17 * Math.sin((t * 5 + 0.4) * Math.PI * 2));
+    const h = Math.max(5, Math.min(1, n) * usable);
+    return { i: `m${index}`, x: index * step, y: height - h, h };
   });
   return { barW, bars };
 }
 
-function ObserveTitle({
-  mobileLayout,
-  letterRefs,
+function ObservePeakBand({
+  tone,
+  width,
+  height,
+  points,
 }: {
-  mobileLayout: boolean;
-  letterRefs: { current: Array<HTMLSpanElement | null> };
+  tone: 'temp' | 'humid';
+  width: number;
+  height: number;
+  points: ObservePoint[];
 }) {
-  const bind = (index: number) => (element: HTMLSpanElement | null) => {
-    letterRefs.current[index] = element;
-  };
-
-  if (mobileLayout) {
-    return (
-      <>
-        Ob<span ref={bind(0)}>s</span>erve the <span ref={bind(1)}>F</span>ield
-      </>
-    );
-  }
-
+  const lineD = observeLineD(points);
+  const areaD = observeAreaD(points, height);
   return (
-    <>
-      <span ref={bind(0)}>O</span>bserve
-      <br />
-      the <span ref={bind(1)}>F</span>ield
-    </>
+    <div className={`copy-pad-band is-${tone}`}>
+      <svg
+        className="copy-pad-peak-svg"
+        viewBox={`0 0 ${Math.max(width, 1)} ${Math.max(height, 1)}`}
+        preserveAspectRatio="none"
+      >
+        {areaD ? <path className={`copy-pad-${tone}-area`} d={areaD} /> : null}
+        {lineD ? <path className={`copy-pad-${tone}-line`} d={lineD} fill="none" /> : null}
+      </svg>
+    </div>
+  );
+}
+
+function ObserveMotorBand({
+  width,
+  height,
+  barW,
+  bars,
+}: {
+  width: number;
+  height: number;
+  barW: number;
+  bars: Array<{ i: string; x: number; y: number; h: number }>;
+}) {
+  const gradId = useId();
+  return (
+    <div className="copy-pad-band is-motor">
+      <svg
+        className="copy-pad-peak-svg"
+        viewBox={`0 0 ${Math.max(width, 1)} ${Math.max(height, 1)}`}
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#d5dcd8" />
+            <stop offset="48%" stopColor="#aeb6b2" />
+            <stop offset="100%" stopColor="#7e8682" />
+          </linearGradient>
+        </defs>
+        {bars.map((bar) => (
+          <rect
+            key={bar.i}
+            className="copy-pad-motor-bar"
+            x={bar.x}
+            y={bar.y}
+            width={barW}
+            height={bar.h}
+            fill={`url(#${gradId})`}
+          />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+function ObserveChartStack({
+  width,
+  height,
+  tempPoints,
+  humidPoints,
+  motorBars,
+  motorBarW,
+}: {
+  width: number;
+  height: number;
+  tempPoints: ObservePoint[];
+  humidPoints: ObservePoint[];
+  motorBars: Array<{ i: string; x: number; y: number; h: number }>;
+  motorBarW: number;
+}) {
+  const bandH = height / 3;
+  return (
+    <div className="copy-pad-bands">
+      <ObservePeakBand tone="temp" width={width} height={bandH} points={tempPoints} />
+      <ObservePeakBand tone="humid" width={width} height={bandH} points={humidPoints} />
+      <ObserveMotorBand width={width} height={bandH} barW={motorBarW} bars={motorBars} />
+    </div>
   );
 }
 
@@ -187,7 +242,6 @@ export default function Home() {
   const [typedRest, setTypedRest] = useState('');
   const [typingLine, setTypingLine] = useState<'lead' | 'rest' | null>(null);
   const [controllerOn, setControllerOn] = useState(false);
-  const [observeAnchors, setObserveAnchors] = useState<ObserveAnchor[]>([]);
   const [observeSize, setObserveSize] = useState({ w: 0, h: 0 });
   const navigationLockRef = useRef(false);
   const navigationUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -199,7 +253,6 @@ export default function Home() {
   const dustWashDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
   const observeLayerRef = useRef<HTMLDivElement | null>(null);
-  const observeLetterRefs = useRef<Array<HTMLSpanElement | null>>([]);
   const activeSectionRef = useRef(activeSection);
   activeSectionRef.current = activeSection;
 
@@ -281,25 +334,11 @@ export default function Home() {
   useLayoutEffect(() => {
     const measure = () => {
       const layer = observeLayerRef.current;
-      const letters = observeLetterRefs.current.slice(0, 2);
-      if (!layer || letters.length < 2 || letters.some((letter) => !letter)) return;
-      const box = layer.getBoundingClientRect();
+      if (!layer) return;
       const width = layer.clientWidth;
       const height = layer.clientHeight;
-      if (width < 8 || height < 8 || box.width < 8 || box.height < 8) return;
-      const scaleX = width / box.width;
-      const scaleY = height / box.height;
-      const yRatios = mobileLayout ? [0.2, 0.5] : [0.5, 0.06];
+      if (width < 8 || height < 8) return;
       setObserveSize({ w: width, h: height });
-      setObserveAnchors(
-        letters.map((letter, index) => {
-          const rect = letter!.getBoundingClientRect();
-          return {
-            x: Math.min(width, Math.max(0, (rect.left + rect.width / 2 - box.left) * scaleX)),
-            y: Math.min(height, Math.max(0, (rect.top + rect.height * yRatios[index] - box.top) * scaleY)),
-          };
-        }),
-      );
     };
 
     measure();
@@ -307,10 +346,6 @@ export default function Home() {
     const layer = observeLayerRef.current;
     const observer = new ResizeObserver(measure);
     if (layer) observer.observe(layer);
-    observeLetterRefs.current.forEach((letter) => {
-      if (letter) observer.observe(letter);
-    });
-    void document.fonts?.ready.then(measure);
     window.addEventListener('resize', measure);
     return () => {
       cancelAnimationFrame(frame);
@@ -401,16 +436,29 @@ export default function Home() {
     return () => node.removeEventListener('wheel', onWheel);
   }, []);
 
-  const observePoints = observeChartPoints(observeAnchors, observeSize.w, observeSize.h);
-  const observeLineD = observePoints
-    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
-    .join(' ');
-  const observeLast = observePoints[observePoints.length - 1];
-  const observeAreaD = observeLast
-    ? `${observeLineD} L ${observeLast.x.toFixed(2)} ${observeSize.h} L 0 ${observeSize.h} Z`
-    : '';
-  const observePeaks = observePoints.filter((point) => point.peak);
-  const { barW: observeBarW, bars: observeBars } = observeBarLayout(observePoints, observeSize.w, observeSize.h);
+  const observeBandH = observeSize.h / 3;
+  const observeSpanW = observeSize.w * 2;
+  const observeTempPoints = observeWavePoints(
+    observeSize.w,
+    observeBandH,
+    [
+      [2, 0.28, 0.06],
+      [1, 0.16, 0.22],
+      [4, 0.07, 0.4],
+    ],
+    0.5,
+  );
+  const observeHumidPoints = observeWavePoints(
+    observeSize.w,
+    observeBandH,
+    [
+      [3, 0.22, 0.18],
+      [5, 0.12, 0.62],
+      [1, 0.1, 0.84],
+    ],
+    0.46,
+  );
+  const { barW: observeMotorBarW, bars: observeMotorBarItems } = observeMotorBars(observeSize.w, observeBandH);
 
   return (
     <main
@@ -502,10 +550,8 @@ export default function Home() {
             <div
               className={`pointer-events-auto relative ${
                 mobileLayout
-                  ? 'mobile-copy-panel w-full px-1 pb-3 pt-4'
-                  : section.id === 'cloud'
-                    ? 'max-w-[26rem] pb-12 pt-10 sm:max-w-[28rem] sm:pb-14 sm:pt-14'
-                    : 'max-w-2xl pb-14 pt-10 sm:pb-20 sm:pt-20'
+                  ? 'mobile-copy-panel w-full min-h-[8rem] px-1 pb-3 pt-4'
+                  : 'w-[min(100%,27rem)] min-h-[481px] max-w-2xl pb-14 pt-10 sm:pb-20 sm:pt-20'
               }`}
             >
               {!mobileLayout && section.id !== 'cloud' && (
@@ -524,6 +570,15 @@ export default function Home() {
                   <div aria-hidden="true" className={`copy-air-pad${dustWashing ? ' is-revealed' : ''}`} />
                 </>
               )}
+              {section.id === 'controller' ? (
+                <div className={`copy-pad-square${controllerOn ? ' is-on' : ''}`} aria-hidden="true">
+                  <svg viewBox={`0 0 ${SQUARE_WAVE_VIEW_W} 36`} preserveAspectRatio="none">
+                    <g className="copy-pad-square-scroll">
+                      <path className="copy-pad-square-wave" d={SQUARE_WAVE_D} fill="none" />
+                    </g>
+                  </svg>
+                </div>
+              ) : null}
               {section.id === 'cloud' ? (
                 <div
                   key={activeSection === 'cloud' ? 'pad-live' : 'pad-idle'}
@@ -531,51 +586,19 @@ export default function Home() {
                   style={{ '--cloud-chart-delay': `${CLOUD_CHART_AT_S}s` } as CSSProperties}
                   aria-hidden="true"
                 >
-                  <div ref={observeLayerRef} className="copy-pad-peak-layer">
-                    <svg
-                      className="copy-pad-peak-svg"
-                      viewBox={`0 0 ${Math.max(observeSize.w, 1)} ${Math.max(observeSize.h, 1)}`}
-                      preserveAspectRatio="none"
-                    >
-                      {observeBars.map((bar, index) => (
-                        <rect
-                          key={bar.i}
-                          className="copy-pad-peak-bar"
-                          x={bar.x}
-                          y={bar.y}
-                          width={observeBarW}
-                          height={Math.max(0, observeSize.h - bar.y)}
-                          style={
-                            {
-                              '--bar-rise-delay': `calc(var(--cloud-chart-delay, 0.64s) + ${index * 0.012}s)`,
-                            } as CSSProperties
-                          }
+                  <div ref={observeLayerRef} className="copy-pad-peak-viewport">
+                    <div className="copy-pad-peak-scroll">
+                      <div className="copy-pad-peak-layer">
+                        <ObserveChartStack
+                          width={observeSpanW}
+                          height={observeSize.h}
+                          tempPoints={observeTempPoints}
+                          humidPoints={observeHumidPoints}
+                          motorBars={observeMotorBarItems}
+                          motorBarW={observeMotorBarW}
                         />
-                      ))}
-                      {observeAreaD ? <path className="copy-pad-peak-area" d={observeAreaD} /> : null}
-                      {observeLineD ? (
-                        <path className="copy-pad-peak-line" d={observeLineD} fill="none" pathLength={1} />
-                      ) : null}
-                    </svg>
-                    {observePeaks.map((peak) => (
-                      <span
-                        key={peak.i}
-                        className="copy-pad-peak"
-                        style={
-                          {
-                            left: `${peak.x}px`,
-                            top: `${peak.y}px`,
-                            '--echo-at': `${observeSize.w > 0 ? (peak.x / observeSize.w) * OBSERVE_SCAN_S : 0}s`,
-                          } as CSSProperties
-                        }
-                      >
-                        <span className="copy-pad-peak-core" />
-                        <span className="copy-pad-peak-echo" />
-                        <span className="copy-pad-peak-echo is-late" />
-                        <span className="copy-pad-peak-echo is-later" />
-                      </span>
-                    ))}
-                    <span className="copy-pad-scan" />
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -590,15 +613,6 @@ export default function Home() {
                       ? 'copy-with-aside'
                       : ''
                 }`}>
-                  {section.id === 'controller' ? (
-                    <div className={`copy-pad-square${controllerOn ? ' is-on' : ''}`} aria-hidden="true">
-                      <svg viewBox={`0 0 ${SQUARE_WAVE_VIEW_W} 36`} preserveAspectRatio="none">
-                        <g className="copy-pad-square-scroll">
-                          <path className="copy-pad-square-wave" d={SQUARE_WAVE_D} fill="none" />
-                        </g>
-                      </svg>
-                    </div>
-                  ) : null}
                   <p
                     className={`copy-eyebrow font-semibold uppercase tracking-[0.24em] text-[#0f8d4b] ${
                       mobileLayout ? 'mb-2 text-[11px]' : 'mb-5 text-sm'
@@ -628,8 +642,6 @@ export default function Home() {
                           {typingLine === 'rest' ? <span className="control-caret" aria-hidden="true" /> : null}
                         </span>
                       </>
-                    ) : section.id === 'cloud' ? (
-                      <ObserveTitle mobileLayout={mobileLayout} letterRefs={observeLetterRefs} />
                     ) : (
                       <>
                         {section.title}
@@ -646,9 +658,7 @@ export default function Home() {
                     className={`copy-body text-[#486457] ${
                       mobileLayout
                         ? `mt-2.5 max-w-full leading-5 ${section.id === 'controller' ? 'text-[0.8rem]' : 'text-[0.86rem]'}`
-                        : section.id === 'cloud'
-                          ? 'mt-5 max-w-none text-base leading-7'
-                          : 'mt-7 max-w-xl text-lg leading-8 sm:text-xl sm:leading-9'
+                        : 'mt-7 max-w-xl text-lg leading-8 sm:text-xl sm:leading-9'
                     }`}
                   >
                     <span className="whitespace-nowrap">
