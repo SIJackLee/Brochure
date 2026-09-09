@@ -2,7 +2,7 @@
 
 import { Environment, useGLTF } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, Suspense, type MutableRefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, Suspense, type RefObject } from 'react';
 import { Box3, CanvasTexture, DoubleSide, ExtrudeGeometry, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, Shape, SRGBColorSpace, Vector3 } from 'three';
 import { CloudScreen } from '@/components/cloud-stage';
 import { computeFieldPlacement, cloudCameraPose, controllerCameraPose, fitPairToBand } from '@/lib/field-stage-layout';
@@ -18,6 +18,7 @@ import {
   CONTROLLER_SETTLE_HOLD_S,
 } from '@/lib/controller-boot';
 import { COMM_LCD_HEIGHT, COMM_LCD_PNG_UV, COMM_LCD_WIDTH, drawCommLcd } from '@/lib/comm-lcd';
+import type { MotorSceneState, SectionId } from '@/lib/scene-types';
 import {
   MOTOR_AIRFLOW_DUST_LEAD_S,
   MOTOR_AIRFLOW_DUST_WINDOW_S,
@@ -78,9 +79,7 @@ function reexplodeScaleForWidth(width: number) {
   return width < NARROW_CANVAS_PX ? MOBILE_REEXPLODE_SCALE : 1;
 }
 
-export type SectionId = 'motor' | 'controller' | 'cloud';
-
-export type MotorSceneState = 'exploded' | 'assembling' | 'assembled' | 'blade-assembly' | 'spinning' | 'showcase';
+export type { MotorSceneState, SectionId } from '@/lib/scene-types';
 
 type ControllerLamp = {
   mesh: Mesh;
@@ -152,7 +151,7 @@ type MotorPartEntry = {
   end: number;
 };
 
-function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; assemblyRef: MutableRefObject<MotorAssemblyRef>; onReady: () => void }) {
+function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; assemblyRef: RefObject<MotorAssemblyRef>; onReady: () => void }) {
   const { size } = useThree();
   const { scene } = useGLTF('/models/BLDC_Motor_Web_v1.glb');
   const model = useMemo(() => {
@@ -607,7 +606,7 @@ function ImportedCommModule({ active }: { active: boolean }) {
   return <primitive object={rig.clone} />;
 }
 
-function BladeRotor({ settings, active, assemblyRef }: { settings: BladeSettings; active: boolean; assemblyRef: MutableRefObject<MotorAssemblyRef> }) {
+function BladeRotor({ settings, active, assemblyRef }: { settings: BladeSettings; active: boolean; assemblyRef: RefObject<MotorAssemblyRef> }) {
   const { size } = useThree();
   const rotorRef = useRef<Group>(null);
   const bladeMaterial = useMemo(() => new MeshStandardMaterial({
@@ -748,7 +747,7 @@ function AirflowStreaks({
   assemblyRef,
   active,
 }: {
-  assemblyRef: MutableRefObject<MotorAssemblyRef>;
+  assemblyRef: RefObject<MotorAssemblyRef>;
   active: boolean;
 }) {
   const airCount = 72;
@@ -1207,7 +1206,7 @@ function CameraRig({ activeSection, mobileLayout }: CameraRigProps) {
     const pose = CAMERA_POSES[section];
     const position = pose.position.clone();
     const target = pose.target.clone();
-    // Dev mobile frame and real phones share a narrow canvas width.
+    // Narrow canvases (phones) share a tighter camera framing.
     if (size.width < 640) {
       // Look slightly BELOW the product so it sits in the upper mid band
       // (above the fixed copy strip, below the fixed header).
@@ -1239,7 +1238,8 @@ function CameraRig({ activeSection, mobileLayout }: CameraRigProps) {
 
     toPosition.copy(pose.position);
     toTarget.copy(pose.target);
-  }, [activeSection, camera, size.width, size.height, mobileLayout, currentTarget, fromPosition, fromTarget, toPosition, toTarget]);
+    // Pose helper closes over size/mobile; those are listed in the dependency array.
+  }, [activeSection, camera, size.width, size.height, mobileLayout, currentTarget, fromPosition, fromTarget, toPosition, toTarget]); // oxlint-disable-line react-hooks/exhaustive-deps
 
   useFrame((_, delta) => {
     elapsedRef.current += delta;

@@ -1,6 +1,6 @@
 'use client';
 
-import FanScene, { type MotorSceneState, type SectionId } from '@/components/fan-scene';
+import type { MotorSceneState, SectionId } from '@/lib/scene-types';
 import {
   CONTROLLER_POWER_END_S,
   CONTROLLER_TYPE_LINE_GAP_MS,
@@ -8,8 +8,11 @@ import {
   CONTROLLER_TYPE_STEP_MS,
 } from '@/lib/controller-boot';
 import { CLOUD_CHART_AT_S, MOTOR_DUST_DELAY_SHOWCASE_MS, MOTOR_DUST_DELAY_SPIN_MS } from '@/lib/intro-timing';
+import dynamic from 'next/dynamic';
 import Image from 'next/image';
-import { useEffect, useRef, useState, type CSSProperties, type WheelEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type WheelEvent } from 'react';
+
+const FanScene = dynamic(() => import('@/components/fan-scene'), { ssr: false });
 
 const sections: Array<{
   id: SectionId;
@@ -43,8 +46,9 @@ const sections: Array<{
   },
   {
     id: 'cloud',
-    eyebrow: '03 / MONITOR',
-    title: 'See what the system knows',
+    eyebrow: '03 / OBSERVE',
+    title: 'Observe',
+    titleRest: 'the Field',
     description: 'Field data from every drive and command,',
     descriptionRest: 'in one operating view.',
     mobileDescription: 'Field data from every drive and command,',
@@ -52,10 +56,129 @@ const sections: Array<{
   },
 ];
 
-type DevViewport = 'pc' | 'mobile';
+const SQUARE_WAVE_PERIOD = 40;
+const SQUARE_WAVE_VIEW_W = 240;
+const SQUARE_WAVE_Y_LOW = 34.5;
+const SQUARE_WAVE_Y_HIGH = 1.5;
+
+function squareWavePath(periods: number) {
+  let d = `M 0 ${SQUARE_WAVE_Y_LOW}`;
+  for (let i = 0; i < periods; i += 1) {
+    const x0 = i * SQUARE_WAVE_PERIOD;
+    d += ` H ${x0 + SQUARE_WAVE_PERIOD / 2} V ${SQUARE_WAVE_Y_HIGH} H ${x0 + SQUARE_WAVE_PERIOD} V ${SQUARE_WAVE_Y_LOW}`;
+  }
+  return d;
+}
+
+const SQUARE_WAVE_D = squareWavePath(7);
+
+const OBSERVE_SCAN_S = 3;
+
+type ObserveAnchor = { x: number; y: number };
+
+function samplePolylineY(points: Array<{ x: number; y: number }>, x: number) {
+  if (points.length === 0) return 0;
+  if (x <= points[0].x) return points[0].y;
+  for (let index = 1; index < points.length; index += 1) {
+    const left = points[index - 1];
+    const right = points[index];
+    if (x <= right.x) {
+      const span = right.x - left.x;
+      const t = span <= 0 ? 0 : (x - left.x) / span;
+      return left.y + (right.y - left.y) * t;
+    }
+  }
+  return points[points.length - 1].y;
+}
+
+function observeChartPoints(anchors: ObserveAnchor[], width: number, height: number) {
+  if (anchors.length === 0 || width < 8 || height < 8) return [];
+
+  const dipY = (left: ObserveAnchor, right: ObserveAnchor) => {
+    const sameLine = Math.abs(left.y - right.y) < 28;
+    const dip = sameLine ? 16 : 8;
+    return Math.min(height * 0.9, Math.max(left.y, right.y) + dip);
+  };
+
+  const peaks = anchors.map((anchor, index) => ({
+    i: `p${index}`,
+    x: anchor.x,
+    y: anchor.y,
+    peak: true as const,
+  }));
+
+  const points: Array<{ i: string; x: number; y: number; peak?: boolean }> = [];
+  const first = peaks[0];
+  if (first && first.x > 6) {
+    const start = { x: 0, y: Math.min(height * 0.86, first.y + 14) };
+    points.push({ i: 'start', ...start });
+    points.push({ i: 'sv', x: first.x * 0.5, y: dipY(start, first) });
+  }
+
+  peaks.forEach((peak, index) => {
+    points.push(peak);
+    const next = peaks[index + 1];
+    if (!next) return;
+    points.push({
+      i: `v${index}`,
+      x: (peak.x + next.x) / 2,
+      y: dipY(peak, next),
+    });
+  });
+
+  const last = peaks[peaks.length - 1];
+  if (last && last.x < width - 6) {
+    const end = { x: width, y: Math.min(height * 0.86, last.y + 14) };
+    points.push({ i: 'ev', x: (last.x + width) / 2, y: dipY(last, end) });
+    points.push({ i: 'end', ...end });
+  }
+
+  return points;
+}
+
+function observeBarLayout(points: Array<{ x: number; y: number }>, width: number, height: number) {
+  if (points.length === 0 || width < 8 || height < 8) return { barW: 8, bars: [] as Array<{ i: string; x: number; y: number }> };
+  const targetW = Math.max(5, Math.min(9, width / 42));
+  const count = Math.max(8, Math.round((2 * width / targetW + 1) / 3));
+  const barW = (2 * width) / (3 * count - 1);
+  const step = barW * 1.5;
+  const bars = Array.from({ length: count }, (_, index) => {
+    const x = index * step;
+    const y = samplePolylineY(points, x + barW / 2);
+    return { i: `b${index}`, x, y };
+  });
+  return { barW, bars };
+}
+
+function ObserveTitle({
+  mobileLayout,
+  letterRefs,
+}: {
+  mobileLayout: boolean;
+  letterRefs: { current: Array<HTMLSpanElement | null> };
+}) {
+  const bind = (index: number) => (element: HTMLSpanElement | null) => {
+    letterRefs.current[index] = element;
+  };
+
+  if (mobileLayout) {
+    return (
+      <>
+        Ob<span ref={bind(0)}>s</span>erve the <span ref={bind(1)}>F</span>ield
+      </>
+    );
+  }
+
+  return (
+    <>
+      <span ref={bind(0)}>O</span>bserve
+      <br />
+      the <span ref={bind(1)}>F</span>ield
+    </>
+  );
+}
 
 export default function Home() {
-  const [devViewport, setDevViewport] = useState<DevViewport>('pc');
   const [isNarrowScreen, setIsNarrowScreen] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>('motor');
   const [motorSequence, setMotorSequence] = useState(0);
@@ -64,6 +187,8 @@ export default function Home() {
   const [typedRest, setTypedRest] = useState('');
   const [typingLine, setTypingLine] = useState<'lead' | 'rest' | null>(null);
   const [controllerOn, setControllerOn] = useState(false);
+  const [observeAnchors, setObserveAnchors] = useState<ObserveAnchor[]>([]);
+  const [observeSize, setObserveSize] = useState({ w: 0, h: 0 });
   const navigationLockRef = useRef(false);
   const navigationUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
@@ -73,10 +198,11 @@ export default function Home() {
   });
   const dustWashDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
+  const observeLayerRef = useRef<HTMLDivElement | null>(null);
+  const observeLetterRefs = useRef<Array<HTMLSpanElement | null>>([]);
 
-  const mobileLayout = devViewport === 'mobile' || isNarrowScreen;
-  const previewFrame = devViewport === 'mobile';
-  const stageH = previewFrame ? 'h-full' : 'h-[100svh]';
+  const mobileLayout = isNarrowScreen;
+  const stageH = 'h-[100svh]';
   const stagePos = 'fixed';
 
   useEffect(() => {
@@ -150,6 +276,47 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [activeSection]);
 
+  useLayoutEffect(() => {
+    const measure = () => {
+      const layer = observeLayerRef.current;
+      const letters = observeLetterRefs.current.slice(0, 2);
+      if (!layer || letters.length < 2 || letters.some((letter) => !letter)) return;
+      const box = layer.getBoundingClientRect();
+      const width = layer.clientWidth;
+      const height = layer.clientHeight;
+      if (width < 8 || height < 8 || box.width < 8 || box.height < 8) return;
+      const scaleX = width / box.width;
+      const scaleY = height / box.height;
+      const yRatios = mobileLayout ? [0.2, 0.5] : [0.5, 0.06];
+      setObserveSize({ w: width, h: height });
+      setObserveAnchors(
+        letters.map((letter, index) => {
+          const rect = letter!.getBoundingClientRect();
+          return {
+            x: Math.min(width, Math.max(0, (rect.left + rect.width / 2 - box.left) * scaleX)),
+            y: Math.min(height, Math.max(0, (rect.top + rect.height * yRatios[index] - box.top) * scaleY)),
+          };
+        }),
+      );
+    };
+
+    measure();
+    const frame = requestAnimationFrame(() => requestAnimationFrame(measure));
+    const layer = observeLayerRef.current;
+    const observer = new ResizeObserver(measure);
+    if (layer) observer.observe(layer);
+    observeLetterRefs.current.forEach((letter) => {
+      if (letter) observer.observe(letter);
+    });
+    void document.fonts?.ready.then(measure);
+    window.addEventListener('resize', measure);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [mobileLayout, activeSection]);
+
   useEffect(
     () => () => {
       if (dustWashDelayRef.current) clearTimeout(dustWashDelayRef.current);
@@ -199,7 +366,7 @@ export default function Home() {
       observer.disconnect();
       if (navigationUnlockTimerRef.current) clearTimeout(navigationUnlockTimerRef.current);
     };
-  }, [devViewport, mobileLayout]);
+  }, [mobileLayout]);
 
   const scrollToSection = (id: SectionId) => {
     const target = sectionRefs.current[id];
@@ -223,18 +390,27 @@ export default function Home() {
     if (nextIndex !== currentIndex) scrollToSection(sections[nextIndex].id);
   };
 
-  const brochure = (
+  const observePoints = observeChartPoints(observeAnchors, observeSize.w, observeSize.h);
+  const observeLineD = observePoints
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+    .join(' ');
+  const observeLast = observePoints[observePoints.length - 1];
+  const observeAreaD = observeLast
+    ? `${observeLineD} L ${observeLast.x.toFixed(2)} ${observeSize.h} L 0 ${observeSize.h} Z`
+    : '';
+  const observePeaks = observePoints.filter((point) => point.peak);
+  const { barW: observeBarW, bars: observeBars } = observeBarLayout(observePoints, observeSize.w, observeSize.h);
+
+  return (
     <main
       ref={mainRef}
       onWheel={handleWheel}
       data-mobile={mobileLayout ? 'true' : 'false'}
       data-section={activeSection}
       className={`relative select-none overflow-x-hidden bg-[#dfece5] text-[#17241d] ${
-        previewFrame
-          ? 'h-full snap-y snap-mandatory overflow-y-auto overscroll-contain'
-          : mobileLayout
-            ? 'h-svh snap-y snap-mandatory overflow-y-auto overscroll-contain'
-            : 'min-h-screen'
+        mobileLayout
+          ? 'h-svh snap-y snap-mandatory overflow-y-auto overscroll-contain'
+          : 'min-h-screen'
       }`}
     >
       {/* 3D stage — fixed canvas; mobile sections only switch scene/copy over it. */}
@@ -338,30 +514,59 @@ export default function Home() {
                   <div aria-hidden="true" className={`copy-air-pad${dustWashing ? ' is-revealed' : ''}`} />
                 </>
               )}
-              {section.id === 'controller' ? (
-                <div
-                  aria-hidden="true"
-                  className={`copy-pad-pulse${controllerOn ? ' is-on' : ''}`}
-                />
-              ) : null}
               {section.id === 'cloud' ? (
                 <div
+                  key={activeSection === 'cloud' ? 'pad-live' : 'pad-idle'}
                   className={`copy-pad-chart${activeSection === 'cloud' ? ' is-live' : ''}`}
                   style={{ '--cloud-chart-delay': `${CLOUD_CHART_AT_S}s` } as CSSProperties}
                   aria-hidden="true"
                 >
-                  <span className="copy-pad-chart-bar" style={{ height: '38%' }} />
-                  <span className="copy-pad-chart-bar" style={{ height: '22%' }} />
-                  <span className="copy-pad-chart-bar" style={{ height: '54%' }} />
-                  <span className="copy-pad-chart-bar" style={{ height: '31%' }} />
-                  <span className="copy-pad-chart-bar" style={{ height: '72%' }} />
-                  <span className="copy-pad-chart-bar" style={{ height: '44%' }} />
-                  <span className="copy-pad-chart-bar" style={{ height: '61%' }} />
-                  <span className="copy-pad-chart-bar" style={{ height: '36%' }} />
-                  <span className="copy-pad-chart-bar" style={{ height: '80%' }} />
-                  <span className="copy-pad-chart-bar" style={{ height: '48%' }} />
-                  <span className="copy-pad-chart-bar" style={{ height: '66%' }} />
-                  <span className="copy-pad-chart-bar" style={{ height: '29%' }} />
+                  <div ref={observeLayerRef} className="copy-pad-peak-layer">
+                    <svg
+                      className="copy-pad-peak-svg"
+                      viewBox={`0 0 ${Math.max(observeSize.w, 1)} ${Math.max(observeSize.h, 1)}`}
+                      preserveAspectRatio="none"
+                    >
+                      {observeBars.map((bar, index) => (
+                        <rect
+                          key={bar.i}
+                          className="copy-pad-peak-bar"
+                          x={bar.x}
+                          y={bar.y}
+                          width={observeBarW}
+                          height={Math.max(0, observeSize.h - bar.y)}
+                          style={
+                            {
+                              '--bar-rise-delay': `calc(var(--cloud-chart-delay, 0.64s) + ${index * 0.012}s)`,
+                            } as CSSProperties
+                          }
+                        />
+                      ))}
+                      {observeAreaD ? <path className="copy-pad-peak-area" d={observeAreaD} /> : null}
+                      {observeLineD ? (
+                        <path className="copy-pad-peak-line" d={observeLineD} fill="none" pathLength={1} />
+                      ) : null}
+                    </svg>
+                    {observePeaks.map((peak) => (
+                      <span
+                        key={peak.i}
+                        className="copy-pad-peak"
+                        style={
+                          {
+                            left: `${peak.x}px`,
+                            top: `${peak.y}px`,
+                            '--echo-at': `${observeSize.w > 0 ? (peak.x / observeSize.w) * OBSERVE_SCAN_S : 0}s`,
+                          } as CSSProperties
+                        }
+                      >
+                        <span className="copy-pad-peak-core" />
+                        <span className="copy-pad-peak-echo" />
+                        <span className="copy-pad-peak-echo is-late" />
+                        <span className="copy-pad-peak-echo is-later" />
+                      </span>
+                    ))}
+                    <span className="copy-pad-scan" />
+                  </div>
                 </div>
               ) : null}
               <div
@@ -375,6 +580,15 @@ export default function Home() {
                       ? 'copy-with-aside'
                       : ''
                 }`}>
+                  {section.id === 'controller' ? (
+                    <div className={`copy-pad-square${controllerOn ? ' is-on' : ''}`} aria-hidden="true">
+                      <svg viewBox={`0 0 ${SQUARE_WAVE_VIEW_W} 36`} preserveAspectRatio="none">
+                        <g className="copy-pad-square-scroll">
+                          <path className="copy-pad-square-wave" d={SQUARE_WAVE_D} fill="none" />
+                        </g>
+                      </svg>
+                    </div>
+                  ) : null}
                   <p
                     className={`copy-eyebrow font-semibold uppercase tracking-[0.24em] text-[#0f8d4b] ${
                       mobileLayout ? 'mb-2 text-[11px]' : 'mb-5 text-sm'
@@ -385,59 +599,39 @@ export default function Home() {
                   <h1
                     className={`copy-title font-semibold leading-[0.92] text-[#132019] ${
                       mobileLayout
-                        ? 'max-w-[13ch] text-[1.9rem]'
-                        : section.id === 'cloud'
-                          ? 'max-w-[11ch] text-5xl sm:text-6xl lg:text-7xl'
-                          : `${section.titleRest ? 'w-max max-w-none whitespace-nowrap' : 'max-w-xl'} text-5xl sm:text-7xl lg:text-8xl`
+                        ? 'w-max max-w-full whitespace-nowrap text-[1.65rem]'
+                        : `${section.titleRest ? 'w-max max-w-none whitespace-nowrap' : 'max-w-xl'} text-5xl sm:text-7xl lg:text-8xl`
                     } ${section.id === 'controller' && activeSection === 'controller' ? 'relative' : ''}`}
                   >
                     {section.id === 'controller' && activeSection === 'controller' ? (
                       <>
                         <span className="invisible" aria-hidden="true">
                           {section.title}
-                          <br />
+                          {mobileLayout ? ' ' : <br />}
                           {section.titleRest}
                         </span>
                         <span className="absolute inset-0">
                           {typedLead}
                           {typingLine === 'lead' ? <span className="control-caret" aria-hidden="true" /> : null}
-                          <br />
+                          {mobileLayout ? ' ' : <br />}
                           {typedRest}
                           {typingLine === 'rest' ? <span className="control-caret" aria-hidden="true" /> : null}
                         </span>
                       </>
+                    ) : section.id === 'cloud' ? (
+                      <ObserveTitle mobileLayout={mobileLayout} letterRefs={observeLetterRefs} />
                     ) : (
                       <>
                         {section.title}
                         {section.titleRest ? (
                           <>
-                            <br />
+                            {mobileLayout ? ' ' : <br />}
                             {section.titleRest}
                           </>
                         ) : null}
                       </>
                     )}
                   </h1>
-                  {section.id === 'controller' ? (
-                    <div
-                      className={`copy-aside copy-pulse-aside${controllerOn ? ' is-on' : ''}`}
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                  {section.id === 'cloud' ? (
-                    <div
-                      className={`copy-aside copy-chart-aside${activeSection === 'cloud' ? ' is-live' : ''}`}
-                      style={{ '--cloud-chart-delay': `${CLOUD_CHART_AT_S}s` } as CSSProperties}
-                      aria-hidden="true"
-                    >
-                      <span className="copy-chart-bar" style={{ height: '42%' }} />
-                      <span className="copy-chart-bar" style={{ height: '28%' }} />
-                      <span className="copy-chart-bar" style={{ height: '68%' }} />
-                      <span className="copy-chart-bar" style={{ height: '36%' }} />
-                      <span className="copy-chart-bar" style={{ height: '82%' }} />
-                      <span className="copy-chart-bar" style={{ height: '54%' }} />
-                    </div>
-                  ) : null}
                   <p
                     className={`copy-body text-[#486457] ${
                       mobileLayout
@@ -480,7 +674,7 @@ export default function Home() {
       >
         {sections.map((section) => {
           const navLabel =
-            section.id === 'motor' ? 'Drive' : section.id === 'controller' ? 'Control' : 'Monitor';
+            section.id === 'motor' ? 'Drive' : section.id === 'controller' ? 'Control' : 'Observe';
           return (
             <button
               key={section.id}
@@ -502,44 +696,5 @@ export default function Home() {
         })}
       </nav>
     </main>
-  );
-
-  return (
-    <>
-      <div className="pointer-events-auto fixed left-1/2 top-3 z-[120] flex -translate-x-1/2 items-center gap-1 rounded-full border border-[#9fbaaa] bg-[#132019]/88 p-1 shadow-[0_12px_30px_rgba(19,32,25,0.28)] backdrop-blur-md">
-        <span className="px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#b7d0c2]">
-          Dev
-        </span>
-        {(['pc', 'mobile'] as const).map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            aria-pressed={devViewport === mode}
-            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-              devViewport === mode ? 'bg-[#0f8d4b] text-white' : 'text-[#d7ebe1] hover:bg-white/10'
-            }`}
-            onClick={() => setDevViewport(mode)}
-          >
-            {mode === 'pc' ? 'PC뷰' : '모바일뷰'}
-          </button>
-        ))}
-      </div>
-
-      {devViewport === 'mobile' ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#101814] px-4 pb-4 pt-14">
-          <div className="pointer-events-none absolute inset-x-0 top-14 text-center text-[11px] font-medium tracking-[0.18em] text-[#7f9a8c]">
-            MOBILE PREVIEW · 390 × 844
-          </div>
-          <div className="relative h-[min(844px,calc(100svh-5.5rem))] w-[min(390px,100%)] overflow-hidden rounded-[2rem] border border-[#2c3d34] bg-[#dfece5] shadow-[0_30px_80px_rgba(0,0,0,0.45)] [transform:translateZ(0)]">
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-[50] flex justify-center pt-2">
-              <div className="h-5 w-28 rounded-full bg-[#132019]/85" />
-            </div>
-            {brochure}
-          </div>
-        </div>
-      ) : (
-        brochure
-      )}
-    </>
   );
 }

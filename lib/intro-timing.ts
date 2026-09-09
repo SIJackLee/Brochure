@@ -45,6 +45,6 @@ export const CLOUD_SPIN_S = 0.36;
 export const CLOUD_DWELL_S = CLOUD_STEP_S - CLOUD_SPIN_S;
 export const CLOUD_APPEAR_S = 0.38;
 export const CLOUD_LOCK_LERP = 8;
-/** Copy chart waits until the third face has stopped in view. */
-export const CLOUD_CHART_AT_S = CLOUD_STEP_S * 2 + 0.12;
+/** Section 3 exception: copy pad starts on the first spin, not after the cylinder settles. */
+export const CLOUD_CHART_AT_S = CLOUD_DWELL_S;
 export const CLOUD_CHART_ENTER_S = 0.62;

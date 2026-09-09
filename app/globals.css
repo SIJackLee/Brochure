@@ -2,11 +2,21 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 
+@source not "../node_modules";
+@source not "../tmp";
+@source not "../.next";
+@source ".";
+@source "../components";
+@source "../lib";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --font-geist-sans: system-ui, "Segoe UI", sans-serif;
+  --font-geist-mono: ui-monospace, Consolas, monospace;
+  --font-noto-sans-kr: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
@@ -53,6 +63,9 @@ body {
 }
 
 :root {
+  --font-geist-sans: system-ui, "Segoe UI", sans-serif;
+  --font-geist-mono: ui-monospace, Consolas, monospace;
+  --font-noto-sans-kr: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -297,51 +310,6 @@ body {
   z-index: 1;
 }
 
-.copy-title-pair .copy-pulse-aside {
-  position: absolute;
-  z-index: 0;
-  grid-column: auto;
-  grid-row: auto;
-  top: 2.1rem;
-  right: -0.55rem;
-  bottom: -0.1rem;
-  width: min(92%, 36rem);
-  border-radius: 0.85rem;
-}
-
-[data-mobile='true'] .copy-title-pair .copy-pulse-aside {
-  top: 1.25rem;
-  right: -0.15rem;
-  width: min(90%, 16rem);
-}
-
-.copy-pulse-aside {
-  position: relative;
-  overflow: hidden;
-  opacity: 0;
-  border-radius: 0.7rem;
-  background: repeating-linear-gradient(90deg, rgba(15, 141, 75, 0.55) 0 4px, transparent 4px 11px);
-  background-size: 18px 100%;
-}
-
-.copy-pulse-aside.is-on {
-  opacity: 1;
-  animation: copy-signal-flow 0.8s linear infinite;
-}
-
-.copy-pulse-aside.is-on::after {
-  content: '';
-  position: absolute;
-  left: 8%;
-  right: 8%;
-  top: 28%;
-  height: 2px;
-  border-radius: 99px;
-  background: linear-gradient(90deg, transparent, rgba(15, 141, 75, 0.95), transparent);
-  box-shadow: 0 0 10px rgba(15, 141, 75, 0.4);
-  animation: copy-signal-pulse 1.3s ease-in-out infinite;
-}
-
 .copy-chart-aside {
   display: flex;
   align-items: flex-end;
@@ -365,137 +333,212 @@ body {
 }
 
 .copy-chart-aside.is-live .copy-chart-bar {
-  animation:
-    copy-chart-bar-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) var(--bar-in-delay, 2.5s) both,
-    copy-analysis-wave 1.35s ease-in-out var(--bar-wave-delay, 3.05s) infinite;
+  animation: copy-chart-bar-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) var(--bar-in-delay, 2.5s) both;
 }
 
-.copy-chart-bar:nth-child(1) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.02s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.52s); }
-.copy-chart-bar:nth-child(2) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.08s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.58s); animation-duration: 0.5s, 1.18s; }
-.copy-chart-bar:nth-child(3) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.14s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.64s); }
-.copy-chart-bar:nth-child(4) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.05s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.55s); animation-duration: 0.5s, 1.62s; }
-.copy-chart-bar:nth-child(5) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.18s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.68s); }
-.copy-chart-bar:nth-child(6) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.1s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.6s); animation-duration: 0.5s, 1.08s; }
+.copy-chart-bar:nth-child(1) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.02s); }
+.copy-chart-bar:nth-child(2) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.08s); }
+.copy-chart-bar:nth-child(3) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.14s); }
+.copy-chart-bar:nth-child(4) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.05s); }
+.copy-chart-bar:nth-child(5) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.18s); }
+.copy-chart-bar:nth-child(6) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.1s); }
 
-.copy-pad-pulse {
-  position: absolute;
+.copy-pad-square {
+  display: block;
+  grid-column: 1 / -1;
+  grid-row: 2 / 4;
+  position: relative;
   z-index: 0;
-  inset: 0;
+  width: 100%;
+  min-height: 0;
+  align-self: stretch;
+  justify-self: stretch;
+  overflow: hidden;
   pointer-events: none;
   opacity: 0;
-  border-radius: 1rem;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      rgba(15, 141, 75, 0.11) 0 2px,
-      transparent 2px 13px
-    );
-  background-size: 15px 100%;
-  -webkit-mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.28) 0%, rgba(0, 0, 0, 0.42) 42%, rgba(0, 0, 0, 0.78) 100%);
-  mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.28) 0%, rgba(0, 0, 0, 0.42) 42%, rgba(0, 0, 0, 0.78) 100%);
 }
 
-.copy-pad-pulse.is-on {
-  opacity: 1;
-  animation: copy-signal-flow 1.6s linear infinite;
-}
-
-.copy-pad-pulse.is-on::after {
-  content: '';
+.copy-pad-square svg {
   position: absolute;
-  left: 18%;
-  right: 6%;
-  top: 42%;
-  height: 1px;
-  border-radius: 99px;
-  background: linear-gradient(90deg, transparent, rgba(15, 141, 75, 0.35), transparent);
-  animation: copy-signal-pulse 2.2s ease-in-out infinite;
+  left: 0;
+  width: 100%;
+  top: 1.05rem;
+  height: calc(100% - 2.2rem);
+  clip-path: inset(0 100% 0 0);
+}
+
+.copy-pad-square.is-on {
+  opacity: 1;
+}
+
+.copy-pad-square.is-on svg {
+  animation: copy-square-draw 0.95s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.copy-pad-square-wave {
+  stroke: rgba(15, 141, 75, 0.48);
+  stroke-width: 2;
+  stroke-linejoin: miter;
+  stroke-miterlimit: 8;
+  vector-effect: non-scaling-stroke;
+}
+
+.copy-pad-square-scroll {
+  transform-box: view-box;
+  transform-origin: 0 0;
+}
+
+.copy-pad-square.is-on .copy-pad-square-scroll {
+  animation: copy-square-scroll 2s linear 0.95s infinite;
 }
 
 .copy-pad-chart {
+  --scan-start: calc(var(--cloud-chart-delay, 0.64s) + 0.9s);
   position: absolute;
   z-index: 0;
   inset: 0.35rem 0.4rem 0.3rem;
-  display: flex;
-  align-items: flex-end;
-  gap: 0.28rem;
+  overflow: hidden;
   pointer-events: none;
   opacity: 0;
-  -webkit-mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.24) 0%, rgba(0, 0, 0, 0.4) 42%, rgba(0, 0, 0, 0.72) 100%);
-  mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.24) 0%, rgba(0, 0, 0, 0.4) 42%, rgba(0, 0, 0, 0.72) 100%);
 }
 
 .copy-pad-chart.is-live {
-  animation: copy-chart-pad-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) var(--cloud-chart-delay, 2.45s) both;
+  animation: none;
+  opacity: 1;
 }
 
-.copy-pad-chart-bar {
-  display: block;
-  flex: 1;
-  min-height: 0.35rem;
-  border-radius: 0.14rem 0.14rem 0 0;
-  transform: scaleY(0.06);
-  transform-origin: bottom center;
-  background: linear-gradient(180deg, rgba(15, 141, 75, 0.34), rgba(15, 141, 75, 0.06));
-}
-
-.copy-pad-chart.is-live .copy-pad-chart-bar {
-  animation:
-    copy-chart-bar-in 0.58s cubic-bezier(0.16, 1, 0.3, 1) var(--bar-in-delay, 2.5s) both,
-    copy-analysis-wave 1.42s ease-in-out var(--bar-wave-delay, 3.08s) infinite;
-}
-
-.copy-pad-chart-bar:nth-child(1) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.02s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.58s); }
-.copy-pad-chart-bar:nth-child(2) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.09s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.65s); animation-duration: 0.58s, 1.18s; }
-.copy-pad-chart-bar:nth-child(3) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.16s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.72s); }
-.copy-pad-chart-bar:nth-child(4) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.05s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.61s); animation-duration: 0.58s, 1.68s; }
-.copy-pad-chart-bar:nth-child(5) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.2s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.76s); }
-.copy-pad-chart-bar:nth-child(6) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.12s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.68s); animation-duration: 0.58s, 1.08s; }
-.copy-pad-chart-bar:nth-child(7) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.24s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.8s); }
-.copy-pad-chart-bar:nth-child(8) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.07s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.63s); animation-duration: 0.58s, 1.52s; }
-.copy-pad-chart-bar:nth-child(9) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.18s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.74s); }
-.copy-pad-chart-bar:nth-child(10) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.11s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.67s); animation-duration: 0.58s, 1.22s; }
-.copy-pad-chart-bar:nth-child(11) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.22s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.78s); }
-.copy-pad-chart-bar:nth-child(12) { --bar-in-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.14s); --bar-wave-delay: calc(var(--cloud-chart-delay, 2.45s) + 0.7s); animation-duration: 0.58s, 1.86s; }
-
-[data-mobile='false'] .copy-pad-pulse {
-  inset: 0;
-  border-radius: 1.5rem;
-  -webkit-mask-image: none;
-  mask-image: none;
-  background: repeating-linear-gradient(90deg, rgba(15, 141, 75, 0.4) 0 4px, transparent 4px 10px);
-  background-size: 14px 100%;
-}
-
-[data-mobile='false'] .copy-pad-pulse.is-on {
-  opacity: 0.92;
-}
-
-[data-mobile='false'] .copy-pad-pulse.is-on::after {
+.copy-pad-peak-layer {
+  position: absolute;
   left: 0;
   right: 0;
+  top: 2.15rem;
+  bottom: 0.45rem;
+  overflow: visible;
 }
 
-[data-mobile='false'] .copy-title-pair .copy-pulse-aside {
-  display: none;
+.copy-pad-peak-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.copy-pad-peak-bar {
+  fill: rgba(15, 141, 75, 0.2);
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  transform: scaleY(0.04);
+}
+
+.copy-pad-chart.is-live .copy-pad-peak-bar {
+  animation: copy-pad-bar-rise 0.55s cubic-bezier(0.16, 1, 0.3, 1) var(--bar-rise-delay, 0.64s) both;
+}
+
+.copy-pad-peak-area {
+  fill: rgba(15, 141, 75, 0.06);
+  opacity: 0;
+}
+
+.copy-pad-chart.is-live .copy-pad-peak-area {
+  animation: copy-chart-pad-in 0.45s ease-out calc(var(--cloud-chart-delay, 0.64s) + 0.55s) both;
+}
+
+.copy-pad-peak-line {
+  stroke: rgba(15, 141, 75, 0.42);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: none;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+.copy-pad-chart.is-live .copy-pad-peak-line {
+  animation: copy-peak-draw 0.75s cubic-bezier(0.22, 1, 0.36, 1) calc(var(--cloud-chart-delay, 0.64s) + 0.28s) both;
+}
+
+.copy-pad-scan {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  border-left: 2px dashed rgba(15, 141, 75, 0.78);
+}
+
+.copy-pad-chart.is-live .copy-pad-scan {
+  animation: copy-scan-x 3s linear var(--scan-start) infinite;
+}
+
+.copy-pad-peak {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.copy-pad-peak-core,
+.copy-pad-peak-echo {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 99px;
+  box-sizing: border-box;
+  transform-origin: center;
+}
+
+.copy-pad-peak-core {
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  background: #0f8d4b;
+  opacity: 0.28;
+}
+
+.copy-pad-peak-echo {
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border: 1.5px solid rgba(15, 141, 75, 0.95);
+  opacity: 0;
+}
+
+.copy-pad-chart.is-live .copy-pad-peak-core {
+  animation: copy-peak-flash 3s linear calc(var(--scan-start) + var(--echo-at, 0s)) infinite;
+}
+
+.copy-pad-chart.is-live .copy-pad-peak-echo {
+  animation: copy-peak-echo 3s linear calc(var(--scan-start) + var(--echo-at, 0s)) infinite;
+}
+
+.copy-pad-chart.is-live .copy-pad-peak-echo.is-late {
+  animation-delay: calc(var(--scan-start) + var(--echo-at, 0s) + 0.18s);
+}
+
+.copy-pad-chart.is-live .copy-pad-peak-echo.is-later {
+  animation-delay: calc(var(--scan-start) + var(--echo-at, 0s) + 0.36s);
+}
+
+[data-mobile='false'] .copy-title-pair .copy-pad-square {
+  margin-left: -1rem;
+  width: calc(100% + 1rem);
+}
+
+[data-mobile='false'] .copy-title-pair .copy-pad-square svg {
+  top: 1.2rem;
+  height: calc(100% - 2.5rem);
 }
 
 [data-mobile='false'] .copy-pad-chart {
   inset: -1rem -1.5rem -1.25rem -1rem;
   border-radius: 1.5rem;
-  -webkit-mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.32) 0%, rgba(0, 0, 0, 0.5) 48%, rgba(0, 0, 0, 0.16) 82%, rgba(0, 0, 0, 0) 100%);
-  mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.32) 0%, rgba(0, 0, 0, 0.5) 48%, rgba(0, 0, 0, 0.16) 82%, rgba(0, 0, 0, 0) 100%);
 }
 
 main[data-mobile='false'][data-section='cloud'] .copy-pad-chart {
-  inset: 0;
+  inset: 0 0 0 -1rem;
   border-radius: 1.15rem;
-  -webkit-mask-image: none;
-  mask-image: none;
 }
 
-main[data-mobile='false'][data-section='cloud'] .copy-pad-chart-bar {
-  background: linear-gradient(180deg, rgba(15, 141, 75, 0.28), rgba(15, 141, 75, 0.06));
+main[data-mobile='false'][data-section='cloud'] .copy-pad-peak-layer {
+  bottom: 0;
 }
 
 main[data-mobile='false'][data-section='cloud'] .copy-chart-aside {
@@ -519,36 +562,21 @@ main[data-mobile='false'][data-section='cloud'] .copy-body {
   z-index: 1;
 }
 
-main[data-mobile='true'] .mobile-copy-panel .copy-pad-pulse {
-  inset: 0;
-  -webkit-mask-image: none;
-  mask-image: none;
-  background: repeating-linear-gradient(90deg, rgba(15, 141, 75, 0.4) 0 4px, transparent 4px 10px);
-  background-size: 14px 100%;
+main[data-mobile='true'] .copy-title-pair .copy-pad-square svg {
+  top: 0.5rem;
+  height: calc(100% - 1.1rem);
 }
 
-main[data-mobile='true'] .mobile-copy-panel .copy-pad-pulse.is-on {
-  opacity: 0.92;
-}
-
-main[data-mobile='true'] .mobile-copy-panel .copy-pad-pulse.is-on::after {
-  left: 0;
-  right: 0;
-}
-
-main[data-mobile='true'] .copy-title-pair .copy-pulse-aside,
 main[data-mobile='true'] .copy-chart-aside {
   display: none;
 }
 
-main[data-mobile='true'] .mobile-copy-panel .copy-pad-chart {
+main[data-mobile='true'] .copy-pad-peak-layer {
   inset: 0;
-  -webkit-mask-image: none;
-  mask-image: none;
 }
 
-main[data-mobile='true'] .mobile-copy-panel .copy-pad-chart-bar {
-  background: linear-gradient(180deg, rgba(15, 141, 75, 0.5), rgba(15, 141, 75, 0.12));
+main[data-mobile='true'] .mobile-copy-panel .copy-pad-chart {
+  inset: 0;
 }
 
 [data-mobile='true'] .copy-chart-bar {
@@ -588,24 +616,21 @@ main[data-mobile='true'] .mobile-copy-panel .copy-pad-chart-bar {
   }
 }
 
-@keyframes copy-signal-flow {
+@keyframes copy-square-scroll {
   from {
-    background-position: 0 0;
+    transform: translateX(0);
   }
   to {
-    background-position: 18px 0;
+    transform: translateX(-16.666%);
   }
 }
 
-@keyframes copy-signal-pulse {
-  0%,
-  100% {
-    opacity: 0.2;
-    transform: scaleX(0.55);
+@keyframes copy-square-draw {
+  from {
+    clip-path: inset(0 100% 0 0);
   }
-  50% {
-    opacity: 1;
-    transform: scaleX(1);
+  to {
+    clip-path: inset(0 0 0 0);
   }
 }
 
@@ -629,34 +654,63 @@ main[data-mobile='true'] .mobile-copy-panel .copy-pad-chart-bar {
   }
 }
 
-@keyframes copy-analysis-wave {
+@keyframes copy-pad-bar-rise {
+  from {
+    transform: scaleY(0.04);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes copy-peak-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes copy-scan-x {
+  from {
+    left: 0%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+@keyframes copy-peak-echo {
   0% {
-    opacity: 0.5;
-    transform: scaleY(0.26);
-  }
-  16% {
-    opacity: 1;
-    transform: scaleY(1.18);
-  }
-  34% {
-    opacity: 0.62;
-    transform: scaleY(0.4);
-  }
-  52% {
-    opacity: 0.96;
-    transform: scaleY(0.98);
-  }
-  70% {
-    opacity: 0.68;
-    transform: scaleY(0.52);
-  }
-  86% {
     opacity: 0.9;
-    transform: scaleY(0.86);
+    transform: scale(0.4);
   }
+  23% {
+    opacity: 0;
+    transform: scale(3.1);
+  }
+  23.01%,
   100% {
-    opacity: 0.5;
-    transform: scaleY(0.26);
+    opacity: 0;
+    transform: scale(3.1);
+  }
+}
+
+@keyframes copy-peak-flash {
+  0%,
+  6% {
+    opacity: 0.28;
+    transform: scale(1);
+  }
+  10% {
+    opacity: 1;
+    transform: scale(1.35);
+  }
+  23%,
+  100% {
+    opacity: 0.28;
+    transform: scale(1);
   }
 }
 
@@ -753,11 +807,6 @@ main[data-mobile='true'][data-section='cloud'] {
 main[data-mobile='true'][data-section='cloud'] .mobile-copy-panel {
   padding-top: 0.55rem;
   padding-bottom: 0.4rem;
-}
-
-main[data-mobile='true'][data-section='cloud'] .copy-title {
-  font-size: 1.55rem;
-  max-width: 20ch;
 }
 
 main[data-mobile='true'][data-section='cloud'] .copy-body {
