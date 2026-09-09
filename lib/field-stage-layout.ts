@@ -28,21 +28,46 @@ export const CONTROLLER_LAYOUT = {
   communication: { x: 0.46, y: -0.42 },
 } as const;
 
+/** Pair-local slots on mobile, still a mild top-left / bottom-right. */
 export const CONTROLLER_LAYOUT_MOBILE = {
-  controller: { x: -0.04, y: 0.7 },
-  communication: { x: 0.44, y: -0.1 },
+  controller: { x: -0.28, y: 0.32 },
+  communication: { x: 0.3, y: -0.36 },
 } as const;
 
-export function controllerCameraPose(mobile: boolean) {
+export const CONTROL_PAIR_PAD = 0.88;
+/** Raise the pair in the band; perspective + diagonal AABB otherwise sit low. */
+export const CONTROL_PAIR_Y_LIFT_HY = 0.34;
+
+export function controllerCameraPose(mobile: boolean, center?: Vector3) {
   if (mobile) {
+    const c = center ?? new Vector3(0, 0.08, 0);
     return {
-      position: new Vector3(-0.18, 0.28, 9.45),
-      target: new Vector3(0.16, -0.14, 0),
+      position: new Vector3(c.x, c.y + 0.02, 9.55),
+      target: new Vector3(c.x, c.y, 0),
     };
   }
   return {
     position: new Vector3(0, 0.14, 8),
     target: new Vector3(0, 0.04, 0),
+  };
+}
+
+export function fitPairToBand(
+  boxSize: Vector3,
+  boxCenter: Vector3,
+  band: FieldPlacement,
+): { position: Vector3; scale: number } {
+  const scale = Math.min(
+    (2 * band.hx * CONTROL_PAIR_PAD) / Math.max(boxSize.x, 1e-4),
+    (2 * band.hy * CONTROL_PAIR_PAD) / Math.max(boxSize.y, 1e-4),
+  );
+  return {
+    scale,
+    position: new Vector3(
+      band.center.x - boxCenter.x * scale,
+      band.center.y - boxCenter.y * scale + band.hy * CONTROL_PAIR_Y_LIFT_HY,
+      0,
+    ),
   };
 }
 
@@ -125,8 +150,8 @@ export function safeRectFromInsets(width: number, height: number, insets: FieldI
   };
 }
 
-export function controllerLayoutCamera(width: number, height: number, mobile: boolean) {
-  const pose = controllerCameraPose(mobile);
+export function controllerLayoutCamera(width: number, height: number, mobile: boolean, center?: Vector3) {
+  const pose = controllerCameraPose(mobile, center);
   const camera = new PerspectiveCamera(mobile ? 42 : 38, width / Math.max(1, height), 0.1, 80);
   camera.position.copy(pose.position);
   camera.lookAt(pose.target);
@@ -190,8 +215,29 @@ export function computeFieldPlacement(
   const insets = readFieldInsets(width, height, mobile, cloud);
   const rect = safeRectFromInsets(width, height, insets);
   if (!cloud) {
-    const camera = controllerLayoutCamera(width, height, mobile);
-    return fieldPlacementFromRect(camera, width, height, rect, mobile);
+    if (mobile) {
+      let center = new Vector3(0, 0.1, 0);
+      let placement = fieldPlacementFromRect(
+        controllerLayoutCamera(width, height, true, center),
+        width,
+        height,
+        rect,
+        true,
+      );
+      for (let i = 0; i < 2; i += 1) {
+        center = placement.center;
+        placement = fieldPlacementFromRect(
+          controllerLayoutCamera(width, height, true, center),
+          width,
+          height,
+          rect,
+          true,
+        );
+      }
+      return placement;
+    }
+    const camera = controllerLayoutCamera(width, height, false);
+    return fieldPlacementFromRect(camera, width, height, rect, false);
   }
 
   const seed = cloudCameraPose(mobile, new Vector3(0, 0.12, 0));

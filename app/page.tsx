@@ -318,7 +318,7 @@ export default function Home() {
                 mobileLayout
                   ? 'mobile-copy-panel w-full px-1 pb-3 pt-4'
                   : section.id === 'cloud'
-                    ? 'max-w-[22rem] pb-12 pt-10 sm:max-w-[24rem] sm:pb-14 sm:pt-14'
+                    ? 'max-w-[26rem] pb-12 pt-10 sm:max-w-[28rem] sm:pb-14 sm:pt-14'
                     : 'max-w-2xl pb-14 pt-10 sm:pb-20 sm:pt-20'
               }`}
             >
@@ -441,13 +441,15 @@ export default function Home() {
                   <p
                     className={`copy-body text-[#486457] ${
                       mobileLayout
-                        ? 'mt-2.5 max-w-[34ch] text-[0.86rem] leading-5'
+                        ? `mt-2.5 max-w-full leading-5 ${section.id === 'controller' ? 'text-[0.8rem]' : 'text-[0.86rem]'}`
                         : section.id === 'cloud'
-                          ? 'mt-5 max-w-[28ch] text-base leading-7 sm:text-lg sm:leading-8'
+                          ? 'mt-5 max-w-none text-base leading-7'
                           : 'mt-7 max-w-xl text-lg leading-8 sm:text-xl sm:leading-9'
                     }`}
                   >
-                    {mobileLayout ? section.mobileDescription : section.description}
+                    <span className="whitespace-nowrap">
+                      {mobileLayout ? section.mobileDescription : section.description}
+                    </span>
                     {(mobileLayout ? section.mobileDescriptionRest : section.descriptionRest) ? (
                       <>
                         <br />

@@ -20,13 +20,13 @@ const SELECT = '#1a4a9c';
 const ROW = '#0c1c28';
 
 const MENU_ITEMS = [
-  '제어기 01-18 통신상태 보기',
-  '제어기 19-36 통신상태 보기',
-  '제어기 37-54 통신상태 보기',
-  'Ethernet 설정',
-  '시간 설정 화면선택',
-  '제어기 설정&테스트',
-  '이더넷 테스트',
+  'Ctrl 01-18 Comm',
+  'Ctrl 19-36 Comm',
+  'Ctrl 37-54 Comm',
+  'ETH Setup',
+  'Time Setup',
+  'Ctrl Setup/Test',
+  'ETH Test',
 ] as const;
 
 export type CommLcdPhase = 'off' | 'menu' | 'detail';
@@ -82,7 +82,7 @@ function drawMenu(ctx: CanvasRenderingContext2D, elapsed: number) {
   ctx.fillText('SL-9001', 18, 32);
   ctx.textAlign = 'center';
   ctx.fillStyle = CYAN;
-  ctx.fillText('< 메뉴선택 >', COMM_LCD_WIDTH / 2, 32);
+  ctx.fillText('< MENU >', COMM_LCD_WIDTH / 2, 32);
   ctx.textAlign = 'right';
   ctx.fillStyle = DIM;
   ctx.font = `400 20px ${font}`;
@@ -118,7 +118,7 @@ function drawMenu(ctx: CanvasRenderingContext2D, elapsed: number) {
   ctx.textAlign = 'right';
   ctx.fillStyle = YELLOW;
   ctx.fillText(
-    `${clock.year}년 ${pad2(clock.month)}월 ${pad2(clock.day)}일 ${pad2(clock.hour)}시 ${pad2(clock.minute)}분 ${pad2(clock.second)}초`,
+    `${clock.year}-${pad2(clock.month)}-${pad2(clock.day)} ${pad2(clock.hour)}:${pad2(clock.minute)}:${pad2(clock.second)}`,
     COMM_LCD_WIDTH - 18,
     COMM_LCD_HEIGHT - 14,
   );
@@ -136,30 +136,30 @@ function drawDetail(ctx: CanvasRenderingContext2D, elapsed: number) {
 
   ctx.font = `700 18px ${font}`;
   ctx.textAlign = 'left';
-  fillRound(ctx, 12, 8, 92, 28, 4, '#123044');
+  fillRound(ctx, 12, 8, 78, 28, 4, '#123044');
   ctx.fillStyle = TEXT;
-  ctx.fillText('이전메뉴', 24, 28);
+  ctx.fillText('BACK', 24, 28);
 
   ctx.textAlign = 'center';
   ctx.font = `700 22px ${font}`;
-  const title = '< 제어기 01 설정&동작상태 >';
+  const title = '< CTRL 01 STATUS >';
   ctx.fillStyle = CYAN;
   ctx.fillText(title, COMM_LCD_WIDTH / 2, 30);
   const titleWidth = ctx.measureText(title).width;
   const oneWidth = ctx.measureText('01').width;
-  const before01 = ctx.measureText('< 제어기 ').width;
+  const before01 = ctx.measureText('< CTRL ').width;
   ctx.fillStyle = YELLOW;
   ctx.fillText('01', COMM_LCD_WIDTH / 2 - titleWidth / 2 + before01 + oneWidth / 2, 30);
 
   ctx.textAlign = 'right';
   ctx.fillStyle = DIM;
   ctx.font = `400 16px ${font}`;
-  ctx.fillText('축종코드 P00', COMM_LCD_WIDTH - 16, 28);
+  ctx.fillText('Type P00', COMM_LCD_WIDTH - 16, 28);
 
   ctx.textAlign = 'left';
   ctx.fillStyle = TEXT;
   ctx.font = `400 16px ${font}`;
-  ctx.fillText('축사유형 SP07    축사번호 01    방번호 01', 18, 58);
+  ctx.fillText('Barn SP07    House 01    Rm 01', 18, 58);
 
   const cols = [280, 430, 580];
   ctx.fillStyle = CYAN;
@@ -168,11 +168,11 @@ function drawDetail(ctx: CanvasRenderingContext2D, elapsed: number) {
   ['F-1', 'F-2', 'F-3'].forEach((label, i) => ctx.fillText(label, cols[i], 86));
 
   const rows: Array<[string, string, string, string]> = [
-    ['설정온도', '25.0도', '2.0도', '4.0도'],
-    ['온도편차', '6.0도', '5.0도', '5.0도'],
-    ['최저환기', '30%', '25%', '25%'],
-    ['최고환기', '100%', '100%', '100%'],
-    ['가동환기', `${vent}%`, '0%', '0%'],
+    ['Set T', '25.0°C', '2.0°C', '4.0°C'],
+    ['T Dev', '6.0°C', '5.0°C', '5.0°C'],
+    ['Min Vent', '30%', '25%', '25%'],
+    ['Max Vent', '100%', '100%', '100%'],
+    ['Run Vent', `${vent}%`, '0%', '0%'],
   ];
 
   rows.forEach((row, index) => {
@@ -193,19 +193,19 @@ function drawDetail(ctx: CanvasRenderingContext2D, elapsed: number) {
   ctx.textAlign = 'left';
   ctx.fillStyle = DIM;
   ctx.font = `400 18px ${font}`;
-  ctx.fillText('측정온도', 18, COMM_LCD_HEIGHT - 16);
+  ctx.fillText('Meas T', 18, COMM_LCD_HEIGHT - 16);
   ctx.fillStyle = YELLOW;
   ctx.font = `700 22px ${font}`;
-  ctx.fillText(`${temp.toFixed(1)}도`, 110, COMM_LCD_HEIGHT - 16);
+  ctx.fillText(`${temp.toFixed(1)}°C`, 110, COMM_LCD_HEIGHT - 16);
 
   ctx.textAlign = 'right';
   ctx.fillStyle = DIM;
   ctx.font = `400 18px ${font}`;
-  ctx.fillText('측정시간', COMM_LCD_WIDTH - 268, COMM_LCD_HEIGHT - 16);
+  ctx.fillText('Time', COMM_LCD_WIDTH - 168, COMM_LCD_HEIGHT - 16);
   ctx.fillStyle = CYAN;
   ctx.font = `700 18px ${font}`;
   ctx.fillText(
-    `${pad2(clock.month)}월 ${pad2(clock.day)}일 ${pad2(clock.hour)}시 ${pad2(clock.minute)}분`,
+    `${pad2(clock.month)}-${pad2(clock.day)} ${pad2(clock.hour)}:${pad2(clock.minute)}`,
     COMM_LCD_WIDTH - 16,
     COMM_LCD_HEIGHT - 16,
   );

@@ -739,8 +739,10 @@ main[data-mobile='true'] {
 }
 
 main[data-mobile='true'][data-section='controller'] {
-  --field-inset-left: 1.65rem;
-  --field-inset-top: 4.15rem;
+  --field-inset-left: 1.15rem;
+  --field-inset-right: 1.15rem;
+  --field-inset-top: 4.55rem;
+  --field-inset-bottom: calc(5.1rem + 10.4rem);
 }
 
 main[data-mobile='true'][data-section='cloud'] {

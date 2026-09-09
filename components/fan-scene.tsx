@@ -5,7 +5,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, Suspense, type MutableRefObject } from 'react';
 import { Box3, CanvasTexture, DoubleSide, ExtrudeGeometry, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, Shape, SRGBColorSpace, Vector3 } from 'three';
 import { CloudScreen } from '@/components/cloud-stage';
-import { computeFieldPlacement, cloudCameraPose, controllerCameraPose } from '@/lib/field-stage-layout';
+import { computeFieldPlacement, cloudCameraPose, controllerCameraPose, fitPairToBand } from '@/lib/field-stage-layout';
 import {
   CONTROLLER_BOOT_DIGIT_DURATION,
   CONTROLLER_BOOT_DIGIT_STARTS,
@@ -853,6 +853,22 @@ function AirflowStreaks({
   );
 }
 
+function aabbInGroupSpace(group: Group) {
+  const box = new Box3();
+  group.updateWorldMatrix(true, true);
+  const inv = group.matrixWorld.clone().invert();
+  const worldBox = new Box3();
+  group.traverse((object) => {
+    if (!(object instanceof Mesh) || !object.geometry) return;
+    if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
+    const geoBox = object.geometry.boundingBox;
+    if (!geoBox) return;
+    worldBox.copy(geoBox).applyMatrix4(object.matrixWorld).applyMatrix4(inv);
+    box.union(worldBox);
+  });
+  return box;
+}
+
 function PartsStudy({
   activeSection,
   onMotorPhaseChange,
@@ -868,6 +884,7 @@ function PartsStudy({
   const studyRef = useRef<Group>(null);
   const motorBodyRef = useRef<Group>(null);
   const controllerRef = useRef<Group>(null);
+  const pairLocalRef = useRef<Group>(null);
   const motorAssemblyRef = useRef<MotorAssemblyRef>({
     elapsed: 0,
     state: 'exploded',
@@ -882,6 +899,7 @@ function PartsStudy({
   const onMotorPhaseChangeRef = useRef(onMotorPhaseChange);
   const onMotorHoverChangeRef = useRef(onMotorHoverChange);
   const [controllerScale, setControllerScale] = useState(1);
+  const [pairFit, setPairFit] = useState({ x: 0, y: 0, scale: 1 });
   const fieldPlacement = useMemo(
     () => computeFieldPlacement(size.width, size.height, mobileLayout, activeSection === 'cloud'),
     [size.width, size.height, mobileLayout, activeSection],
@@ -996,6 +1014,24 @@ function PartsStudy({
     if (controllerScale === 1) setControllerScale((motorMaxDimension * 0.95) / controllerMaxDimension);
   }, [controllerScale]);
 
+  useLayoutEffect(() => {
+    if (!mobileLayout || !pairLocalRef.current) return;
+    const box = aabbInGroupSpace(pairLocalRef.current);
+    if (box.isEmpty()) return;
+    const boxSize = box.getSize(new Vector3());
+    const boxCenter = box.getCenter(new Vector3());
+    const band = computeFieldPlacement(size.width, size.height, true, false);
+    const fit = fitPairToBand(boxSize, boxCenter, band);
+    if (
+      Math.abs(pairFit.x - fit.position.x) < 0.003
+      && Math.abs(pairFit.y - fit.position.y) < 0.003
+      && Math.abs(pairFit.scale - fit.scale) < 0.003
+    ) {
+      return;
+    }
+    setPairFit({ x: fit.position.x, y: fit.position.y, scale: fit.scale });
+  }, [mobileLayout, controllerScale, size.width, size.height, fieldPlacement, pairFit.x, pairFit.y, pairFit.scale]);
+
   const activeSectionRef = useRef(activeSection);
   activeSectionRef.current = activeSection;
 
@@ -1062,23 +1098,57 @@ function PartsStudy({
       Controller = top-left, comm module = bottom-right of that stage.
     */}
     <group name="FieldStage" visible={activeSection === 'controller'}>
-      <group
-        name="ControllerStage"
-        ref={controllerRef}
-        position={[fieldPlacement.controller.x, fieldPlacement.controller.y, fieldPlacement.controller.z]}
-        rotation={mobileLayout ? [0.04, 0, 0] : [0.08, -0.22, 0]}
-        scale={controllerScale * (mobileLayout ? 0.64 : 0.72)}
-      >
-        <ImportedController active={activeSection === 'controller'} />
-      </group>
-      <group
-        name="CommunicationStage"
-        position={[fieldPlacement.communication.x, fieldPlacement.communication.y, fieldPlacement.communication.z]}
-        rotation={[0.05, -0.38, 0]}
-        scale={controllerScale * 0.72 * 0.9}
-      >
-        <ImportedCommModule active={activeSection === 'controller'} />
-      </group>
+      {mobileLayout ? (
+        <group name="ControlPairFit" position={[pairFit.x, pairFit.y, 0]} scale={pairFit.scale}>
+          <group ref={pairLocalRef} name="ControlPair">
+            <group
+              name="ControllerStage"
+              ref={controllerRef}
+              position={[
+                fieldPlacement.controller.x - fieldPlacement.center.x,
+                fieldPlacement.controller.y - fieldPlacement.center.y,
+                0,
+              ]}
+              rotation={[0.04, 0, 0]}
+              scale={controllerScale * 0.64}
+            >
+              <ImportedController active={activeSection === 'controller'} />
+            </group>
+            <group
+              name="CommunicationStage"
+              position={[
+                fieldPlacement.communication.x - fieldPlacement.center.x,
+                fieldPlacement.communication.y - fieldPlacement.center.y,
+                fieldPlacement.communication.z,
+              ]}
+              rotation={[0.04, -0.1, 0]}
+              scale={controllerScale * 0.64 * 0.9}
+            >
+              <ImportedCommModule active={activeSection === 'controller'} />
+            </group>
+          </group>
+        </group>
+      ) : (
+        <>
+          <group
+            name="ControllerStage"
+            ref={controllerRef}
+            position={[fieldPlacement.controller.x, fieldPlacement.controller.y, fieldPlacement.controller.z]}
+            rotation={[0.08, -0.22, 0]}
+            scale={controllerScale * 0.72}
+          >
+            <ImportedController active={activeSection === 'controller'} />
+          </group>
+          <group
+            name="CommunicationStage"
+            position={[fieldPlacement.communication.x, fieldPlacement.communication.y, fieldPlacement.communication.z]}
+            rotation={[0.05, -0.38, 0]}
+            scale={controllerScale * 0.72 * 0.9}
+          >
+            <ImportedCommModule active={activeSection === 'controller'} />
+          </group>
+        </>
+      )}
     </group>
 
     {activeSection === 'cloud' ? (
@@ -1129,7 +1199,8 @@ function CameraRig({ activeSection, mobileLayout }: CameraRigProps) {
     }
 
     if (section === 'controller') {
-      const pose = controllerCameraPose(mobileLayout);
+      const placement = computeFieldPlacement(size.width, size.height, mobileLayout, false);
+      const pose = controllerCameraPose(mobileLayout, mobileLayout ? placement.center : undefined);
       return { position: pose.position.clone(), target: pose.target.clone() };
     }
 
