@@ -74,6 +74,10 @@ const COMM_MODEL_PATH = '/models/SL9001_comm_module_master.glb';
 const NARROW_CANVAS_PX = 640;
 /** Click-to-re-explode travel on a ~390px canvas, so PCB-to-blade stay on screen. */
 const MOBILE_REEXPLODE_SCALE = 0.58;
+const LCD_UPLOAD_INTERVAL_S = 1 / 15;
+const ENVIRONMENT_DEFER_MS = 400;
+const CONTEXT_REMOUNT_DELAY_MS = 280;
+const CANVAS_DPR: [number, number] = [1, 1.5];
 
 function reexplodeScaleForWidth(width: number) {
   return width < NARROW_CANVAS_PX ? MOBILE_REEXPLODE_SCALE : 1;
@@ -110,6 +114,29 @@ const SEVEN_SEGMENTS: Record<number, string> = {
 function easeSmooth(t: number) {
   const x = Math.max(0, Math.min(1, t));
   return x * x * (3 - 2 * x);
+}
+
+function createGlConfig() {
+  const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+  return {
+    antialias: dpr <= 1.05,
+    powerPreference: 'default' as const,
+    failIfMajorPerformanceCaveat: false,
+    stencil: false,
+    alpha: false,
+  };
+}
+
+function maxBoxDimension(object: Object3D, extraScale = 1) {
+  const size = new Box3().setFromObject(object).getSize(new Vector3()).multiplyScalar(extraScale);
+  return Math.max(size.x, size.y, size.z);
+}
+
+function controllerScaleFromScenes(motorScene: Object3D, controllerScene: Object3D) {
+  const motorMax = maxBoxDimension(motorScene, 0.008);
+  const controllerMax = maxBoxDimension(controllerScene, 0.72);
+  if (motorMax <= 0 || controllerMax <= 0) return 1;
+  return (motorMax * 0.95) / controllerMax;
 }
 
 function lampify(mesh: Mesh, emissive = '#ff2f24') {
@@ -265,6 +292,14 @@ function ImportedMotor({ active, assemblyRef, onReady }: { active: boolean; asse
     onReady();
   }, [onReady]);
 
+  useEffect(() => () => {
+    model.clone.traverse((object) => {
+      if (!(object instanceof Mesh)) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      materials.forEach((material) => material.dispose());
+    });
+  }, [model]);
+
   useFrame((_, delta) => {
     const { elapsed, state, hoverExplode } = assemblyRef.current;
     const hoverTravel = hoverExplode * reexplodeScaleForWidth(size.width);
@@ -387,6 +422,7 @@ function ImportedController({ active }: { active: boolean }) {
 
     return {
       clone,
+      ownedMaterials: [controllerWhitePlastic],
       rocker: rocker as Mesh | null,
       digits,
       fanLeds: fanLeds.filter(Boolean),
@@ -402,14 +438,28 @@ function ImportedController({ active }: { active: boolean }) {
     elapsedRef.current = 0;
   }, [active]);
 
+  useEffect(() => () => {
+    rig.ownedMaterials.forEach((material) => material.dispose());
+    const lamps = [
+      rig.displayWindow,
+      rig.symbolI,
+      rig.symbolO,
+      ...rig.fanLeds,
+      ...rig.menuLeds,
+      ...rig.settingLeds,
+      ...rig.digits.flatMap((segments) => Object.values(segments)),
+    ];
+    lamps.forEach((lamp) => lamp?.material.dispose());
+  }, [rig]);
+
   useFrame((_, delta) => {
     if (!active) {
       elapsedRef.current = 0;
-    } else {
-      elapsedRef.current += delta;
+      return;
     }
+    elapsedRef.current += delta;
 
-    const elapsed = active ? elapsedRef.current : 0;
+    const elapsed = elapsedRef.current;
     const powerT = easeSmooth((elapsed - CONTROLLER_POWER_START_S) / (CONTROLLER_POWER_END_S - CONTROLLER_POWER_START_S));
     if (rig.rocker) {
       rig.rocker.rotation.x = CONTROLLER_ROCKER_OFF_X + (CONTROLLER_ROCKER_ON_X - CONTROLLER_ROCKER_OFF_X) * powerT;
@@ -568,7 +618,7 @@ function ImportedCommModule({ active }: { active: boolean }) {
     if (ctx) drawCommLcd(ctx, 0);
     if (texture) texture.needsUpdate = true;
 
-    return { clone, ctx, texture, lcdMesh };
+    return { clone, ctx, texture, lcdMesh, casingPlastic };
   }, [scene]);
 
   useEffect(() => {
@@ -589,17 +639,23 @@ function ImportedCommModule({ active }: { active: boolean }) {
       const material = rig.lcdMesh.material;
       if (!Array.isArray(material)) material.dispose();
       rig.texture?.dispose();
+      rig.casingPlastic.dispose();
     };
   }, [rig]);
+
+  const lcdAccumRef = useRef(LCD_UPLOAD_INTERVAL_S);
 
   useFrame((_, delta) => {
     if (!active) {
       elapsedRef.current = 0;
-    } else {
-      elapsedRef.current += delta;
+      return;
     }
+    elapsedRef.current += delta;
+    lcdAccumRef.current += delta;
+    if (lcdAccumRef.current < LCD_UPLOAD_INTERVAL_S) return;
+    lcdAccumRef.current = 0;
     if (!rig.ctx || !rig.texture) return;
-    drawCommLcd(rig.ctx, active ? elapsedRef.current : 0);
+    drawCommLcd(rig.ctx, elapsedRef.current);
     rig.texture.needsUpdate = true;
   });
 
@@ -659,8 +715,13 @@ function BladeRotor({ settings, active, assemblyRef }: { settings: BladeSettings
     });
   }, [settings]);
 
+  useEffect(() => () => {
+    bladeGeometry.dispose();
+    bladeMaterial.dispose();
+  }, [bladeGeometry, bladeMaterial]);
+
   useFrame((_, delta) => {
-    if (!rotorRef.current) return;
+    if (!rotorRef.current || !active) return;
     const { elapsed, state, hoverExplode } = assemblyRef.current;
     const introAssembly = state === 'showcase' || state === 'spinning'
       ? 1
@@ -775,6 +836,7 @@ function AirflowStreaks({
 
   useFrame((_, delta) => {
     if (!meshRef.current || !materialRef.current) return;
+    if (!active) return;
 
     const { elapsed, state, hoverExplode } = assemblyRef.current;
     const blowing = active && (state === 'spinning' || state === 'showcase');
@@ -880,8 +942,9 @@ function PartsStudy({
   mobileLayout: boolean;
 }) {
   const { size, gl } = useThree();
+  const motorGltf = useGLTF('/models/BLDC_Motor_Web_v1.glb');
+  const controllerGltf = useGLTF(CONTROLLER_MODEL_PATH);
   const studyRef = useRef<Group>(null);
-  const motorBodyRef = useRef<Group>(null);
   const controllerRef = useRef<Group>(null);
   const pairLocalRef = useRef<Group>(null);
   const motorAssemblyRef = useRef<MotorAssemblyRef>({
@@ -897,7 +960,10 @@ function PartsStudy({
   const lastReportedPhaseRef = useRef<MotorSceneState | null>(null);
   const onMotorPhaseChangeRef = useRef(onMotorPhaseChange);
   const onMotorHoverChangeRef = useRef(onMotorHoverChange);
-  const [controllerScale, setControllerScale] = useState(1);
+  const controllerScale = useMemo(
+    () => controllerScaleFromScenes(motorGltf.scene, controllerGltf.scene),
+    [motorGltf.scene, controllerGltf.scene],
+  );
   const [pairFit, setPairFit] = useState({ x: 0, y: 0, scale: 1 });
   const fieldPlacement = useMemo(
     () => computeFieldPlacement(size.width, size.height, mobileLayout, activeSection === 'cloud'),
@@ -920,6 +986,7 @@ function PartsStudy({
 
   useEffect(() => {
     if (activeSection === 'motor') {
+      motorReadyRef.current = false;
       introClockRef.current = 0;
       motorExplodedRef.current = false;
       hoverExplodeRef.current = 0;
@@ -997,24 +1064,7 @@ function PartsStudy({
   });
 
   useLayoutEffect(() => {
-    if (!motorBodyRef.current || !controllerRef.current) return;
-
-    motorBodyRef.current.updateWorldMatrix(true, true);
-    controllerRef.current.updateWorldMatrix(true, true);
-
-    const motorBox = new Box3().setFromObject(motorBodyRef.current);
-    const controllerBox = new Box3().setFromObject(controllerRef.current);
-    const motorBodySize = motorBox.getSize(new Vector3());
-    const controllerSize = controllerBox.getSize(new Vector3());
-    const motorMaxDimension = Math.max(motorBodySize.x, motorBodySize.y, motorBodySize.z);
-    const controllerMaxDimension = Math.max(controllerSize.x, controllerSize.y, controllerSize.z);
-
-    if (motorMaxDimension <= 0 || controllerMaxDimension <= 0) return;
-    if (controllerScale === 1) setControllerScale((motorMaxDimension * 0.95) / controllerMaxDimension);
-  }, [controllerScale]);
-
-  useLayoutEffect(() => {
-    if (!mobileLayout || !pairLocalRef.current) return;
+    if (!mobileLayout || activeSection !== 'controller' || !pairLocalRef.current) return;
     const box = aabbInGroupSpace(pairLocalRef.current);
     if (box.isEmpty()) return;
     const boxSize = box.getSize(new Vector3());
@@ -1029,7 +1079,7 @@ function PartsStudy({
       return;
     }
     setPairFit({ x: fit.position.x, y: fit.position.y, scale: fit.scale });
-  }, [mobileLayout, controllerScale, size.width, size.height, fieldPlacement, pairFit.x, pairFit.y, pairFit.scale]);
+  }, [mobileLayout, activeSection, controllerScale, size.width, size.height, fieldPlacement, pairFit.x, pairFit.y, pairFit.scale]);
 
   const activeSectionRef = useRef(activeSection);
   activeSectionRef.current = activeSection;
@@ -1069,9 +1119,9 @@ function PartsStudy({
       rotation={[0.06, -0.3, 0]}
       scale={mobileLayout ? 0.8 : 0.90}
     >
+      {activeSection === 'motor' ? (
       <group
         name="MotorStage"
-        visible={activeSection === 'motor'}
         position={[0.25, 0.15, 0]}
         onPointerOver={(event) => {
           event.stopPropagation();
@@ -1086,17 +1136,19 @@ function PartsStudy({
           <boxGeometry args={[8.4, 4.4, 4.2]} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
-        <group ref={motorBodyRef} rotation={[0, 0, Math.PI / 2]} scale={0.008}><ImportedMotor active={activeSection === 'motor'} assemblyRef={motorAssemblyRef} onReady={() => { motorReadyRef.current = true; }} /></group>
-        <group position={[-0.76, 0, 0]} scale={0.42}><BladeRotor active={activeSection === 'motor'} assemblyRef={motorAssemblyRef} settings={initialBladeSettings} /></group>
-        <AirflowStreaks assemblyRef={motorAssemblyRef} active={activeSection === 'motor'} />
+        <group rotation={[0, 0, Math.PI / 2]} scale={0.008}><ImportedMotor active assemblyRef={motorAssemblyRef} onReady={() => { motorReadyRef.current = true; }} /></group>
+        <group position={[-0.76, 0, 0]} scale={0.42}><BladeRotor active assemblyRef={motorAssemblyRef} settings={initialBladeSettings} /></group>
+        <AirflowStreaks assemblyRef={motorAssemblyRef} active />
       </group>
+      ) : null}
     </group>
 
     {/*
       Section 02: pair sits around the copy-free safe rect center.
       Controller = top-left, comm module = bottom-right of that stage.
     */}
-    <group name="FieldStage" visible={activeSection === 'controller'}>
+    {activeSection === 'controller' ? (
+    <group name="FieldStage">
       {mobileLayout ? (
         <group name="ControlPairFit" position={[pairFit.x, pairFit.y, 0]} scale={pairFit.scale}>
           <group ref={pairLocalRef} name="ControlPair">
@@ -1111,7 +1163,7 @@ function PartsStudy({
               rotation={[0.04, 0, 0]}
               scale={controllerScale * 0.64}
             >
-              <ImportedController active={activeSection === 'controller'} />
+              <ImportedController active />
             </group>
             <group
               name="CommunicationStage"
@@ -1123,7 +1175,7 @@ function PartsStudy({
               rotation={[0.04, -0.1, 0]}
               scale={controllerScale * 0.64 * 0.9}
             >
-              <ImportedCommModule active={activeSection === 'controller'} />
+              <ImportedCommModule active />
             </group>
           </group>
         </group>
@@ -1136,7 +1188,7 @@ function PartsStudy({
             rotation={[0.08, -0.22, 0]}
             scale={controllerScale * 0.72}
           >
-            <ImportedController active={activeSection === 'controller'} />
+            <ImportedController active />
           </group>
           <group
             name="CommunicationStage"
@@ -1144,11 +1196,12 @@ function PartsStudy({
             rotation={[0.05, -0.38, 0]}
             scale={controllerScale * 0.72 * 0.9}
           >
-            <ImportedCommModule active={activeSection === 'controller'} />
+            <ImportedCommModule active />
           </group>
         </>
       )}
     </group>
+    ) : null}
 
     {activeSection === 'cloud' ? (
       <group name="CloudStage">
@@ -1269,6 +1322,40 @@ function CameraRig({ activeSection, mobileLayout }: CameraRigProps) {
   return null;
 }
 
+function WebGLContextGuard({ onLost }: { onLost: () => void }) {
+  const { gl } = useThree();
+  const onLostRef = useRef(onLost);
+  onLostRef.current = onLost;
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const handleLost = (event: Event) => {
+      event.preventDefault();
+      onLostRef.current();
+    };
+    canvas.addEventListener('webglcontextlost', handleLost, false);
+    return () => canvas.removeEventListener('webglcontextlost', handleLost, false);
+  }, [gl]);
+
+  return null;
+}
+
+function DeferredWarehouse({ intensity }: { intensity: number }) {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setReady(true), ENVIRONMENT_DEFER_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  if (!ready) return null;
+  return (
+    <Suspense fallback={null}>
+      <Environment preset="warehouse" background={false} environmentIntensity={intensity} />
+    </Suspense>
+  );
+}
+
 type FanSceneProps = {
   activeSection: SectionId;
   onMotorPhaseChange?: (phase: MotorSceneState) => void;
@@ -1284,15 +1371,52 @@ export default function FanScene({
 }: FanSceneProps) {
   const allowPointer = activeSection === 'motor' || activeSection === 'cloud';
   const controllerStage = activeSection === 'controller';
+  const glConfig = useMemo(() => createGlConfig(), []);
+  const [canvasEpoch, setCanvasEpoch] = useState(0);
+  const [contextLost, setContextLost] = useState(false);
+  const [frameloop, setFrameloop] = useState<'always' | 'never'>('always');
+  const remountingRef = useRef(false);
+  const remountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const sync = () => setFrameloop(document.hidden ? 'never' : 'always');
+    sync();
+    document.addEventListener('visibilitychange', sync);
+    return () => document.removeEventListener('visibilitychange', sync);
+  }, []);
+
+  useEffect(() => () => {
+    if (remountTimerRef.current) clearTimeout(remountTimerRef.current);
+  }, []);
+
+  const handleContextLost = () => {
+    if (remountingRef.current) return;
+    remountingRef.current = true;
+    setContextLost(true);
+    if (remountTimerRef.current) clearTimeout(remountTimerRef.current);
+    remountTimerRef.current = setTimeout(() => {
+      setCanvasEpoch((epoch) => epoch + 1);
+      setContextLost(false);
+      remountingRef.current = false;
+    }, CONTEXT_REMOUNT_DELAY_MS);
+  };
 
   return (
     <div className="relative h-full w-full">
+      {contextLost ? (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-[#dfece5]/80 text-sm tracking-wide text-[#17241d]">
+          3D 장면을 다시 불러오는 중
+        </div>
+      ) : null}
       <Canvas
-        dpr={[1, 2]}
-        gl={{ antialias: true, powerPreference: 'high-performance' }}
+        key={canvasEpoch}
+        dpr={CANVAS_DPR}
+        frameloop={frameloop}
+        gl={glConfig}
         camera={{ fov: mobileLayout ? 42 : 38, position: [0, 0, 8.2] }}
         style={{ pointerEvents: allowPointer ? 'auto' : 'none' }}
       >
+        <WebGLContextGuard onLost={handleContextLost} />
         <color attach="background" args={[controllerStage ? '#c5c6c2' : '#dfece5']} />
         <ambientLight intensity={controllerStage ? 0.58 : 0.72} />
         <directionalLight intensity={controllerStage ? 2.2 : 2.8} position={[4, 5, 5]} />
@@ -1301,16 +1425,18 @@ export default function FanScene({
           position={[-4, 2, 2]}
           color={controllerStage ? '#cfd4cf' : '#d9eee6'}
         />
-        <Environment preset="warehouse" background={false} environmentIntensity={controllerStage ? 0.42 : 1} />
+        <DeferredWarehouse intensity={controllerStage ? 0.42 : 1} />
         {controllerStage ? (
           <directionalLight intensity={0.85} position={[-6, 3.2, 5]} color="#f3f3ef" />
         ) : null}
-        <PartsStudy
-          activeSection={activeSection}
-          onMotorPhaseChange={onMotorPhaseChange}
-          onMotorHoverChange={onMotorHoverChange}
-          mobileLayout={mobileLayout}
-        />
+        <Suspense fallback={null}>
+          <PartsStudy
+            activeSection={activeSection}
+            onMotorPhaseChange={onMotorPhaseChange}
+            onMotorHoverChange={onMotorHoverChange}
+            mobileLayout={mobileLayout}
+          />
+        </Suspense>
         <CameraRig activeSection={activeSection} mobileLayout={mobileLayout} />
       </Canvas>
     </div>

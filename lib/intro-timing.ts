@@ -35,10 +35,10 @@ export const MOTOR_PART_WINDOWS = [
 ] as const;
 
 /**
- * Monitor: cylinder dwells on each of 3 faces, then spins 120° to the next.
- * All three faces are shown within SECTION_INTRO_S. Click-to-lock is excluded.
+ * Observe: cylinder dwells on each of 3 faces, then spins 120° to the next.
+ * A full 3-face cycle takes CLOUD_INTRO_S. Click-to-lock is excluded.
  */
-export const CLOUD_INTRO_S = SECTION_INTRO_S;
+export const CLOUD_INTRO_S = 5;
 export const CLOUD_FACE_COUNT = 3;
 export const CLOUD_STEP_S = CLOUD_INTRO_S / CLOUD_FACE_COUNT;
 export const CLOUD_SPIN_S = 0.36;

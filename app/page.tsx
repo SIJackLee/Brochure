@@ -10,7 +10,7 @@ import {
 import { CLOUD_CHART_AT_S, MOTOR_DUST_DELAY_SHOWCASE_MS, MOTOR_DUST_DELAY_SPIN_MS } from '@/lib/intro-timing';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type WheelEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 
 const FanScene = dynamic(() => import('@/components/fan-scene'), { ssr: false });
 
@@ -200,6 +200,8 @@ export default function Home() {
   const mainRef = useRef<HTMLElement | null>(null);
   const observeLayerRef = useRef<HTMLDivElement | null>(null);
   const observeLetterRefs = useRef<Array<HTMLSpanElement | null>>([]);
+  const activeSectionRef = useRef(activeSection);
+  activeSectionRef.current = activeSection;
 
   const mobileLayout = isNarrowScreen;
   const stageH = 'h-[100svh]';
@@ -380,15 +382,24 @@ export default function Home() {
       navigationLockRef.current = false;
     }, 1200);
   };
+  const scrollToSectionRef = useRef(scrollToSection);
+  scrollToSectionRef.current = scrollToSection;
 
-  const handleWheel = (event: WheelEvent<HTMLElement>) => {
-    if (Math.abs(event.deltaY) < 12 || navigationLockRef.current) return;
+  useEffect(() => {
+    const node = mainRef.current;
+    if (!node) return;
 
-    event.preventDefault();
-    const currentIndex = sections.findIndex((section) => section.id === activeSection);
-    const nextIndex = Math.max(0, Math.min(sections.length - 1, currentIndex + (event.deltaY > 0 ? 1 : -1)));
-    if (nextIndex !== currentIndex) scrollToSection(sections[nextIndex].id);
-  };
+    const onWheel = (event: globalThis.WheelEvent) => {
+      if (Math.abs(event.deltaY) < 12 || navigationLockRef.current) return;
+      event.preventDefault();
+      const currentIndex = sections.findIndex((section) => section.id === activeSectionRef.current);
+      const nextIndex = Math.max(0, Math.min(sections.length - 1, currentIndex + (event.deltaY > 0 ? 1 : -1)));
+      if (nextIndex !== currentIndex) scrollToSectionRef.current(sections[nextIndex].id);
+    };
+
+    node.addEventListener('wheel', onWheel, { passive: false });
+    return () => node.removeEventListener('wheel', onWheel);
+  }, []);
 
   const observePoints = observeChartPoints(observeAnchors, observeSize.w, observeSize.h);
   const observeLineD = observePoints
@@ -404,7 +415,6 @@ export default function Home() {
   return (
     <main
       ref={mainRef}
-      onWheel={handleWheel}
       data-mobile={mobileLayout ? 'true' : 'false'}
       data-section={activeSection}
       className={`relative select-none overflow-x-hidden bg-[#dfece5] text-[#17241d] ${
