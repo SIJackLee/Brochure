@@ -35,13 +35,16 @@ export const MOTOR_PART_WINDOWS = [
 ] as const;
 
 /**
- * Monitor: camera settle, then Field / Chart / Model cards appear
- * top-left → bottom-right by SECTION_INTRO_S. Click-to-focus is excluded.
+ * Monitor: cylinder dwells on each of 3 faces, then spins 120° to the next.
+ * All three faces are shown within SECTION_INTRO_S. Click-to-lock is excluded.
  */
 export const CLOUD_INTRO_S = SECTION_INTRO_S;
-export const CLOUD_PANEL_AT_S = [0.55, 1.25, 1.95] as const;
-export const CLOUD_PANEL_FADE_S = 0.42;
-export const CLOUD_FOCUS_LERP = 8;
-/** Copy chart waits until the three cards have seated. */
-export const CLOUD_CHART_AT_S = CLOUD_PANEL_AT_S[2] + CLOUD_PANEL_FADE_S + 0.08;
+export const CLOUD_FACE_COUNT = 3;
+export const CLOUD_STEP_S = CLOUD_INTRO_S / CLOUD_FACE_COUNT;
+export const CLOUD_SPIN_S = 0.36;
+export const CLOUD_DWELL_S = CLOUD_STEP_S - CLOUD_SPIN_S;
+export const CLOUD_APPEAR_S = 0.38;
+export const CLOUD_LOCK_LERP = 8;
+/** Copy chart waits until the third face has stopped in view. */
+export const CLOUD_CHART_AT_S = CLOUD_STEP_S * 2 + 0.12;
 export const CLOUD_CHART_ENTER_S = 0.62;

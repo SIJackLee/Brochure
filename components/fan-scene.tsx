@@ -3,9 +3,9 @@
 import { Environment, useGLTF } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, Suspense, type MutableRefObject } from 'react';
-import { Box3, DoubleSide, ExtrudeGeometry, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, Shape, SRGBColorSpace, Vector3 } from 'three';
+import { Box3, CanvasTexture, DoubleSide, ExtrudeGeometry, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, Shape, SRGBColorSpace, Vector3 } from 'three';
 import { CloudScreen } from '@/components/cloud-stage';
-import { computeFieldPlacement, controllerCameraPose } from '@/lib/field-stage-layout';
+import { computeFieldPlacement, cloudCameraPose, controllerCameraPose } from '@/lib/field-stage-layout';
 import {
   CONTROLLER_BOOT_DIGIT_DURATION,
   CONTROLLER_BOOT_DIGIT_STARTS,
@@ -17,6 +17,7 @@ import {
   CONTROLLER_POWER_START_S,
   CONTROLLER_SETTLE_HOLD_S,
 } from '@/lib/controller-boot';
+import { COMM_LCD_HEIGHT, COMM_LCD_PNG_UV, COMM_LCD_WIDTH, drawCommLcd } from '@/lib/comm-lcd';
 import {
   MOTOR_AIRFLOW_DUST_LEAD_S,
   MOTOR_AIRFLOW_DUST_WINDOW_S,
@@ -457,9 +458,53 @@ function ImportedController({ active }: { active: boolean }) {
   return <primitive object={rig.clone} />;
 }
 
-function ImportedCommModule() {
+function uvToLocalOnQuad(mesh: Mesh, u: number, v: number, target: Vector3) {
+  const pos = mesh.geometry.getAttribute('position');
+  const uv = mesh.geometry.getAttribute('uv');
+  let minU = 1;
+  let maxU = 0;
+  let minV = 1;
+  let maxV = 0;
+  let xAtMinU = 0;
+  let xAtMaxU = 0;
+  let yAtMinV = 0;
+  let yAtMaxV = 0;
+  let z = 0;
+  for (let i = 0; i < uv.count; i += 1) {
+    const uu = uv.getX(i);
+    const vv = uv.getY(i);
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    z = pos.getZ(i);
+    if (uu <= minU) {
+      minU = uu;
+      xAtMinU = x;
+    }
+    if (uu >= maxU) {
+      maxU = uu;
+      xAtMaxU = x;
+    }
+    if (vv <= minV) {
+      minV = vv;
+      yAtMinV = y;
+    }
+    if (vv >= maxV) {
+      maxV = vv;
+      yAtMaxV = y;
+    }
+  }
+  target.set(
+    xAtMinU + ((u - minU) / Math.max(1e-6, maxU - minU)) * (xAtMaxU - xAtMinU),
+    yAtMinV + ((v - minV) / Math.max(1e-6, maxV - minV)) * (yAtMaxV - yAtMinV),
+    z + 0.00055,
+  );
+  return target;
+}
+
+function ImportedCommModule({ active }: { active: boolean }) {
+  const elapsedRef = useRef(0);
   const { scene } = useGLTF(COMM_MODEL_PATH);
-  const model = useMemo(() => {
+  const rig = useMemo(() => {
     const clone = scene.clone(true);
     clone.name = 'CommModule';
     const casingPlastic = new MeshStandardMaterial({
@@ -467,12 +512,14 @@ function ImportedCommModule() {
       roughness: 0.46,
       metalness: 0,
     });
+    const foundPanel: { mesh: Mesh | null } = { mesh: null };
 
     clone.traverse((object) => {
       if (!(object instanceof Mesh)) return;
       const name = object.name.toLowerCase();
 
       if (name.includes('front_decal') || name.includes('front_panel_image')) {
+        foundPanel.mesh = object;
         const originalMaterials = Array.isArray(object.material) ? object.material : [object.material];
         originalMaterials.forEach((material) => {
           const originalMaterial = material as MeshStandardMaterial;
@@ -491,10 +538,73 @@ function ImportedCommModule() {
       }
     });
 
-    return clone;
+    const canvas = typeof document === 'undefined' ? null : document.createElement('canvas');
+    if (canvas) {
+      canvas.width = COMM_LCD_WIDTH;
+      canvas.height = COMM_LCD_HEIGHT;
+    }
+    const ctx = canvas?.getContext('2d') ?? null;
+    const texture = canvas ? new CanvasTexture(canvas) : null;
+    if (texture) {
+      texture.colorSpace = SRGBColorSpace;
+      texture.anisotropy = 4;
+    }
+    const lcdMaterial = new MeshBasicMaterial({
+      map: texture,
+      toneMapped: false,
+      transparent: false,
+    });
+    const lcdMesh = new Mesh(new PlaneGeometry(1, 1), lcdMaterial);
+    lcdMesh.name = 'CommLcdOverlay';
+    if (foundPanel.mesh) {
+      const a = new Vector3();
+      const b = new Vector3();
+      uvToLocalOnQuad(foundPanel.mesh, COMM_LCD_PNG_UV.u0, COMM_LCD_PNG_UV.v0, a);
+      uvToLocalOnQuad(foundPanel.mesh, COMM_LCD_PNG_UV.u1, COMM_LCD_PNG_UV.v1, b);
+      lcdMesh.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, Math.max(a.z, b.z));
+      lcdMesh.scale.set(Math.abs(b.x - a.x), Math.abs(b.y - a.y), 1);
+      foundPanel.mesh.add(lcdMesh);
+    }
+
+    if (ctx) drawCommLcd(ctx, 0);
+    if (texture) texture.needsUpdate = true;
+
+    return { clone, ctx, texture, lcdMesh };
   }, [scene]);
 
-  return <primitive object={model} />;
+  useEffect(() => {
+    elapsedRef.current = 0;
+  }, [active]);
+
+  useEffect(() => {
+    void document.fonts.ready.then(() => {
+      if (!rig.ctx || !rig.texture) return;
+      drawCommLcd(rig.ctx, elapsedRef.current);
+      rig.texture.needsUpdate = true;
+    });
+  }, [rig]);
+
+  useEffect(() => {
+    return () => {
+      rig.lcdMesh.geometry.dispose();
+      const material = rig.lcdMesh.material;
+      if (!Array.isArray(material)) material.dispose();
+      rig.texture?.dispose();
+    };
+  }, [rig]);
+
+  useFrame((_, delta) => {
+    if (!active) {
+      elapsedRef.current = 0;
+    } else {
+      elapsedRef.current += delta;
+    }
+    if (!rig.ctx || !rig.texture) return;
+    drawCommLcd(rig.ctx, active ? elapsedRef.current : 0);
+    rig.texture.needsUpdate = true;
+  });
+
+  return <primitive object={rig.clone} />;
 }
 
 function BladeRotor({ settings, active, assemblyRef }: { settings: BladeSettings; active: boolean; assemblyRef: MutableRefObject<MotorAssemblyRef> }) {
@@ -773,8 +883,8 @@ function PartsStudy({
   const onMotorHoverChangeRef = useRef(onMotorHoverChange);
   const [controllerScale, setControllerScale] = useState(1);
   const fieldPlacement = useMemo(
-    () => computeFieldPlacement(size.width, size.height, mobileLayout),
-    [size.width, size.height, mobileLayout],
+    () => computeFieldPlacement(size.width, size.height, mobileLayout, activeSection === 'cloud'),
+    [size.width, size.height, mobileLayout, activeSection],
   );
 
   useEffect(() => {
@@ -956,8 +1066,8 @@ function PartsStudy({
         name="ControllerStage"
         ref={controllerRef}
         position={[fieldPlacement.controller.x, fieldPlacement.controller.y, fieldPlacement.controller.z]}
-        rotation={[0.08, -0.22, 0]}
-        scale={controllerScale * 0.72}
+        rotation={mobileLayout ? [0.04, 0, 0] : [0.08, -0.22, 0]}
+        scale={controllerScale * (mobileLayout ? 0.64 : 0.72)}
       >
         <ImportedController active={activeSection === 'controller'} />
       </group>
@@ -967,7 +1077,7 @@ function PartsStudy({
         rotation={[0.05, -0.38, 0]}
         scale={controllerScale * 0.72 * 0.9}
       >
-        <ImportedCommModule />
+        <ImportedCommModule active={activeSection === 'controller'} />
       </group>
     </group>
 
@@ -1012,7 +1122,13 @@ function CameraRig({ activeSection, mobileLayout }: CameraRigProps) {
   const nextTarget = useMemo(() => new Vector3(), []);
 
   const getResponsivePose = (section: SectionId) => {
-    if (section === 'controller' || section === 'cloud') {
+    if (section === 'cloud') {
+      const placement = computeFieldPlacement(size.width, size.height, mobileLayout, section === 'cloud');
+      const pose = cloudCameraPose(mobileLayout, placement.center);
+      return { position: pose.position.clone(), target: pose.target.clone() };
+    }
+
+    if (section === 'controller') {
       const pose = controllerCameraPose(mobileLayout);
       return { position: pose.position.clone(), target: pose.target.clone() };
     }
@@ -1052,7 +1168,7 @@ function CameraRig({ activeSection, mobileLayout }: CameraRigProps) {
 
     toPosition.copy(pose.position);
     toTarget.copy(pose.target);
-  }, [activeSection, camera, size.width, mobileLayout, currentTarget, fromPosition, fromTarget, toPosition, toTarget]);
+  }, [activeSection, camera, size.width, size.height, mobileLayout, currentTarget, fromPosition, fromTarget, toPosition, toTarget]);
 
   useFrame((_, delta) => {
     elapsedRef.current += delta;

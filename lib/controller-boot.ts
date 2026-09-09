@@ -14,6 +14,11 @@ export const CONTROLLER_BOOT_FAN_STEP_S = 0.065;
 export const CONTROLLER_BOOT_STATUS_START = 1.72;
 export const CONTROLLER_BOOT_SHOWCASE_AT = 2.15;
 
+/** Comm LCD: blank → menu → controller-01 detail, on the same clock as the pair. */
+export const COMM_LCD_ON_S = CONTROLLER_POWER_END_S + 0.08;
+export const COMM_LCD_MENU_HOLD_S = 0.95;
+export const COMM_LCD_DETAIL_S = COMM_LCD_ON_S + COMM_LCD_MENU_HOLD_S;
+
 /** Copy types as soon as the rocker has finished turning on. */
 export const CONTROLLER_TYPE_START_MS = Math.round(CONTROLLER_POWER_END_S * 1000 + 40);
 export const CONTROLLER_TYPE_STEP_MS = 36;

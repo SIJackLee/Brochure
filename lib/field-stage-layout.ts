@@ -28,11 +28,16 @@ export const CONTROLLER_LAYOUT = {
   communication: { x: 0.46, y: -0.42 },
 } as const;
 
+export const CONTROLLER_LAYOUT_MOBILE = {
+  controller: { x: -0.04, y: 0.7 },
+  communication: { x: 0.44, y: -0.1 },
+} as const;
+
 export function controllerCameraPose(mobile: boolean) {
   if (mobile) {
     return {
-      position: new Vector3(0, 0.04, 8.7),
-      target: new Vector3(0, -0.06, 0),
+      position: new Vector3(-0.18, 0.28, 9.45),
+      target: new Vector3(0.16, -0.14, 0),
     };
   }
   return {
@@ -41,46 +46,69 @@ export function controllerCameraPose(mobile: boolean) {
   };
 }
 
-export function fallbackInsets(width: number, height: number, mobile: boolean, rem: number): FieldInsets {
+/** High diagonal view so the front screen and a side screen are both pickable. */
+export function cloudCameraPose(mobile: boolean, center: Vector3) {
+  if (mobile) {
+    return {
+      position: new Vector3(0.5, 0.88, 2.72),
+      target: new Vector3(0, -0.32, 0.04),
+    };
+  }
+  return {
+    position: new Vector3(center.x + 0.2, center.y + 1.28, 5.05),
+    // Look below and left so the face sits in the open stage, not along the lower edge.
+    target: new Vector3(center.x - 0.4, center.y - 0.48, 0.04),
+  };
+}
+
+export function fallbackInsets(
+  width: number,
+  height: number,
+  mobile: boolean,
+  rem: number,
+  cloud = false,
+): FieldInsets {
   if (mobile) {
     return {
       left: rem,
       right: rem,
-      top: 5.35 * rem,
-      bottom: (5.1 + 9.75) * rem,
+      top: (cloud ? 4.85 : 5.35) * rem,
+      bottom: (5.1 + (cloud ? 14.8 : 9.75)) * rem,
     };
   }
-  const blur = width >= 1024 ? 44 * rem : width >= 640 ? 40 * rem : 36 * rem;
+  const blur = width >= 1024 ? (cloud ? 30 : 44) : width >= 640 ? (cloud ? 28 : 40) : cloud ? 26 : 36;
   return {
-    left: Math.min(width * 0.92, blur),
+    left: Math.min(width * 0.92, blur * rem),
     right: 3.5 * rem,
     top: 5.5 * rem,
     bottom: 6.5 * rem,
   };
 }
 
-function readCssPx(style: CSSStyleDeclaration, name: string, fallbackPx: number) {
+function readCssPx(style: CSSStyleDeclaration, name: string, fallbackPx: number, rem: number) {
   const raw = style.getPropertyValue(name).trim();
-  if (!raw) return fallbackPx;
+  if (!raw || raw.startsWith('calc(')) return fallbackPx;
   const value = Number.parseFloat(raw);
-  return Number.isFinite(value) ? value : fallbackPx;
+  if (!Number.isFinite(value)) return fallbackPx;
+  if (raw.endsWith('rem')) return value * rem;
+  return value;
 }
 
-export function readFieldInsets(width: number, height: number, mobile: boolean): FieldInsets {
+export function readFieldInsets(width: number, height: number, mobile: boolean, cloud = false): FieldInsets {
   const rem =
     typeof document === 'undefined'
       ? 16
       : Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-  const fallback = fallbackInsets(width, height, mobile, rem);
+  const fallback = fallbackInsets(width, height, mobile, rem, cloud);
   if (typeof document === 'undefined') return fallback;
   const main = document.querySelector('main');
   if (!main) return fallback;
   const style = getComputedStyle(main);
   return {
-    left: readCssPx(style, '--field-inset-left', fallback.left),
-    right: readCssPx(style, '--field-inset-right', fallback.right),
-    top: readCssPx(style, '--field-inset-top', fallback.top),
-    bottom: readCssPx(style, '--field-inset-bottom', fallback.bottom),
+    left: readCssPx(style, '--field-inset-left', fallback.left, rem),
+    right: readCssPx(style, '--field-inset-right', fallback.right, rem),
+    top: readCssPx(style, '--field-inset-top', fallback.top, rem),
+    bottom: readCssPx(style, '--field-inset-bottom', fallback.bottom, rem),
   };
 }
 
@@ -124,6 +152,7 @@ export function fieldPlacementFromRect(
   canvasW: number,
   canvasH: number,
   rect: CanvasRect,
+  mobile = false,
 ): FieldPlacement {
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
@@ -134,26 +163,48 @@ export function fieldPlacementFromRect(
   const bottom = unprojectZ0(camera, cx, rect.top + rect.height, canvasW, canvasH);
   const hx = Math.max(0.4, Math.abs(right.x - left.x) / 2);
   const hy = Math.max(0.4, Math.abs(top.y - bottom.y) / 2);
+  const layout = mobile ? CONTROLLER_LAYOUT_MOBILE : CONTROLLER_LAYOUT;
   return {
     center,
     hx,
     hy,
     controller: new Vector3(
-      center.x + CONTROLLER_LAYOUT.controller.x * hx,
-      center.y + CONTROLLER_LAYOUT.controller.y * hy,
+      center.x + layout.controller.x * hx,
+      center.y + layout.controller.y * hy,
       0,
     ),
     communication: new Vector3(
-      center.x + CONTROLLER_LAYOUT.communication.x * hx,
-      center.y + CONTROLLER_LAYOUT.communication.y * hy,
+      center.x + layout.communication.x * hx,
+      center.y + layout.communication.y * hy,
       0.12,
     ),
   };
 }
 
-export function computeFieldPlacement(width: number, height: number, mobile: boolean): FieldPlacement {
-  const camera = controllerLayoutCamera(width, height, mobile);
-  const insets = readFieldInsets(width, height, mobile);
+export function computeFieldPlacement(
+  width: number,
+  height: number,
+  mobile: boolean,
+  cloud = false,
+): FieldPlacement {
+  const insets = readFieldInsets(width, height, mobile, cloud);
   const rect = safeRectFromInsets(width, height, insets);
-  return fieldPlacementFromRect(camera, width, height, rect);
+  if (!cloud) {
+    const camera = controllerLayoutCamera(width, height, mobile);
+    return fieldPlacementFromRect(camera, width, height, rect, mobile);
+  }
+
+  const seed = cloudCameraPose(mobile, new Vector3(0, 0.12, 0));
+  const camera = new PerspectiveCamera(mobile ? 42 : 38, width / Math.max(1, height), 0.1, 80);
+  camera.position.copy(seed.position);
+  camera.lookAt(seed.target);
+  camera.updateProjectionMatrix();
+  camera.updateMatrixWorld(true);
+  const first = fieldPlacementFromRect(camera, width, height, rect, mobile);
+  const refined = cloudCameraPose(mobile, first.center);
+  camera.position.copy(refined.position);
+  camera.lookAt(refined.target);
+  camera.updateProjectionMatrix();
+  camera.updateMatrixWorld(true);
+  return fieldPlacementFromRect(camera, width, height, rect, mobile);
 }

@@ -228,6 +228,7 @@ export default function Home() {
       ref={mainRef}
       onWheel={handleWheel}
       data-mobile={mobileLayout ? 'true' : 'false'}
+      data-section={activeSection}
       className={`relative select-none overflow-x-hidden bg-[#dfece5] text-[#17241d] ${
         previewFrame
           ? 'h-full snap-y snap-mandatory overflow-y-auto overscroll-contain'
@@ -316,10 +317,12 @@ export default function Home() {
               className={`pointer-events-auto relative ${
                 mobileLayout
                   ? 'mobile-copy-panel w-full px-1 pb-3 pt-4'
-                  : 'max-w-2xl pb-14 pt-10 sm:pb-20 sm:pt-20'
+                  : section.id === 'cloud'
+                    ? 'max-w-[22rem] pb-12 pt-10 sm:max-w-[24rem] sm:pb-14 sm:pt-14'
+                    : 'max-w-2xl pb-14 pt-10 sm:pb-20 sm:pt-20'
               }`}
             >
-              {!mobileLayout && (
+              {!mobileLayout && section.id !== 'cloud' && (
                 <div
                   aria-hidden="true"
                   className="pointer-events-none absolute -inset-y-12 -left-6 right-[-5rem] z-0 sm:-left-10 lg:-left-14"
@@ -383,7 +386,9 @@ export default function Home() {
                     className={`copy-title font-semibold leading-[0.92] text-[#132019] ${
                       mobileLayout
                         ? 'max-w-[13ch] text-[1.9rem]'
-                        : `${section.titleRest ? 'w-max max-w-none whitespace-nowrap' : 'max-w-xl'} text-5xl sm:text-7xl lg:text-8xl`
+                        : section.id === 'cloud'
+                          ? 'max-w-[11ch] text-5xl sm:text-6xl lg:text-7xl'
+                          : `${section.titleRest ? 'w-max max-w-none whitespace-nowrap' : 'max-w-xl'} text-5xl sm:text-7xl lg:text-8xl`
                     } ${section.id === 'controller' && activeSection === 'controller' ? 'relative' : ''}`}
                   >
                     {section.id === 'controller' && activeSection === 'controller' ? (
@@ -437,7 +442,9 @@ export default function Home() {
                     className={`copy-body text-[#486457] ${
                       mobileLayout
                         ? 'mt-2.5 max-w-[34ch] text-[0.86rem] leading-5'
-                        : 'mt-7 max-w-xl text-lg leading-8 sm:text-xl sm:leading-9'
+                        : section.id === 'cloud'
+                          ? 'mt-5 max-w-[28ch] text-base leading-7 sm:text-lg sm:leading-8'
+                          : 'mt-7 max-w-xl text-lg leading-8 sm:text-xl sm:leading-9'
                     }`}
                   >
                     {mobileLayout ? section.mobileDescription : section.description}
